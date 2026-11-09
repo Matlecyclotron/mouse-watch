@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Passages{% endblock %}
+{% block body %}
+<main class="wrap stack">
+  <div class="row">
+    <h1>Passages</h1>
+    <span class="spacer"></span>
+    <label class="row" style="gap:.5rem;align-items:center">
+      <span class="muted">Caméra</span>
+      <select id="camera-filter" class="btn">
+        <option value="">Toutes</option>
+        {% for c in cameras %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <div id="nights" class="stack"></div>
+  <p class="empty" id="empty" hidden>Aucun passage enregistré pour le moment. Les photos apparaissent ici quand une caméra est en position « Enregistrement ».</p>
+  <div><button type="button" class="btn" id="more" hidden>Afficher les passages plus anciens</button></div>
+</main>
+
+<dialog id="viewer" aria-labelledby="viewer-title">
+  <img id="viewer-img" alt="">
+  <div class="dialog-bar">
+    <strong id="viewer-title"></strong>
+    <span class="muted" id="viewer-info"></span>
+    <span class="spacer"></span>
+    <a class="btn" id="viewer-download" href="#">Télécharger</a>
+    <button type="button" class="btn danger" id="viewer-delete">Supprimer</button>
+    <button type="button" class="btn" id="viewer-close">Fermer</button>
+  </div>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='passages.js') }}?v={{ page.version }}"></script>
+{% endblock %}

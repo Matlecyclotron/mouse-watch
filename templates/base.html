@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{% endblock %} · {{ page.title }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ page.version }}">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">{{ page.title }}</a>
+  <nav class="nav" aria-label="Navigation principale">
+    <a href="/" {% if nav == 'direct' %}aria-current="page"{% endif %}>Direct</a>
+    <a href="/passages" {% if nav == 'passages' %}aria-current="page"{% endif %}>Passages</a>
+    <a href="/reglages" {% if nav == 'reglages' %}aria-current="page"{% endif %}>Réglages</a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="status-area">
+    <span id="summary" aria-live="polite"></span>
+    <span class="pill" id="nas-pill"><span class="dot warn" aria-hidden="true"></span><span class="txt">Vérification du NAS…</span></span>
+  </div>
+</header>
+{% block body %}{% endblock %}
+<script>window.RTSPWEB = {{ page|tojson }};</script>
+<script src="{{ url_for('static', filename='common.js') }}?v={{ page.version }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

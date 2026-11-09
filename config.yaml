@@ -1,0 +1,46 @@
+# Configuration de rtsp-web (installation : /etc/rtsp-web/config.yaml)
+# Après modification : sudo systemctl restart rtsp-web
+#
+# Ce fichier contient les réglages d'installation. Les réglages de détection
+# (position du sélecteur, zones, seuils) se font dans l'interface web.
+
+server:
+  host: 0.0.0.0          # écoute sur toutes les interfaces du réseau local
+  port: 8080
+  title: "Caméras"
+
+# MediaMTX installé sur ce serveur (valeurs par défaut de l'installation)
+mediamtx:
+  api: http://127.0.0.1:9997
+  rtsp_port: 8554
+  webrtc_port: 8889
+  hls_port: 8888
+
+# Stockage des photos de passages
+storage:
+  nas_dir: /mnt/nas/cameras              # partage du NAS monté par autofs ; vide = stockage local seul
+  local_dir: /var/lib/rtsp-web/pending   # tampon local si le NAS ne répond pas
+  keep_days: 0                           # effacement automatique après N jours ; 0 = jamais
+
+# Valeurs de départ des seuils (bouton « Rétablir les valeurs par défaut »)
+detection_defaults:
+  min_size: 4            # % de l'image
+  sensitivity: 6         # 1 à 10
+  persistence: 3         # images consécutives
+  cooldown: 10           # secondes entre deux passages
+
+# Une entrée par caméra. Pour un Raspberry Pi sous MediaMTX, l'adresse est
+# rtsp://<ip-du-pi>:8554/<nom-du-chemin> (le chemin défini dans le mediamtx.yml du Pi).
+cameras:
+  - id: terrier          # minuscules, chiffres, - et _ ; sert dans les adresses et les dossiers
+    name: "Terrier"
+    url: "rtsp://192.168.1.30:8554/cam"
+    detection: true      # autorise la détection (position choisie dans l'interface)
+
+  # Exemple de seconde caméra :
+  # - id: entree
+  #   name: "Entrée"
+  #   url: "rtsp://utilisateur:motdepasse@192.168.1.31:8554/cam"
+  #   rtsp_transport: tcp  # tcp (défaut, plus fiable) ou udp
+  #   on_demand: false     # true : la caméra n'est sollicitée que si quelqu'un regarde
+  #   detection: false

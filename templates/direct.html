@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Direct{% endblock %}
+{% block body %}
+<main class="wrap stack">
+  <section class="grid-tiles" aria-label="Mosaïque des caméras">
+    {% for c in cameras %}
+    <article class="tile" data-id="{{ c.id }}" data-state="{{ c.state }}" aria-label="{{ c.name }}">
+      <div class="view">
+        <video muted autoplay playsinline></video>
+        <div class="notice"><strong>Connexion à la caméra…</strong><small></small></div>
+        {% if c.detection %}
+        <span class="badge" hidden><span class="dot" aria-hidden="true"></span><span class="txt"></span></span>
+        {% endif %}
+        <div class="flash" role="status"></div>
+      </div>
+      <div class="tilebar">
+        <span class="dot state-dot" aria-hidden="true"></span>
+        <span class="name">{{ c.name }}</span>
+        <div class="tools">
+          {% if c.detection %}
+          <div class="seg" role="group" aria-label="Détection de mouvement">
+            <button type="button" data-mode="off" aria-pressed="false">Arrêtée</button>
+            <button type="button" data-mode="observe" aria-pressed="false">Observation</button>
+            <button type="button" data-mode="record" aria-pressed="false">Enregistrement</button>
+          </div>
+          {% endif %}
+          <div class="zoomgrp needs-video" role="group" aria-label="Zoom">
+            <button type="button" class="btn" data-act="zoom-out" aria-label="Dézoomer">−</button>
+            <button type="button" class="btn level" data-act="zoom-reset" aria-label="Réinitialiser le zoom">100 %</button>
+            <button type="button" class="btn" data-act="zoom-in" aria-label="Zoomer">+</button>
+          </div>
+          <button type="button" class="btn needs-video" data-act="capture">Capturer</button>
+          <button type="button" class="btn needs-video" data-act="sound" aria-pressed="false" hidden>Son</button>
+          <button type="button" class="btn" data-act="full">Plein écran</button>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </section>
+
+  {% if cameras | selectattr('detection') | list %}
+  <section class="stack" aria-labelledby="recent-title" style="gap:.75rem">
+    <div class="row">
+      <h2 id="recent-title">Derniers passages</h2>
+      <span class="muted small" id="recent-count"></span>
+      <span class="spacer"></span>
+      <a href="/passages">Voir tous les passages</a>
+    </div>
+    <div class="thumbs" id="recent"></div>
+    <p class="empty" id="recent-empty" hidden>Aucun passage enregistré pour le moment.</p>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='hls.min.js') }}"></script>
+<script src="{{ url_for('static', filename='player.js') }}?v={{ page.version }}"></script>
+<script src="{{ url_for('static', filename='direct.js') }}?v={{ page.version }}"></script>
+{% endblock %}

@@ -1,0 +1,5 @@
+# Fins de ligne Unix pour tous les fichiers texte, même depuis Windows :
+# indispensable pour que install.sh et les scripts fonctionnent sous Debian.
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf

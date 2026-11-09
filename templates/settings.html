@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Réglages{% endblock %}
+{% block body %}
+<main class="wrap">
+  <div class="settings-layout">
+    <nav class="side" aria-label="Caméras">
+      <span class="muted small" style="padding:0 .75rem .35rem">Caméras</span>
+      {% for c in cameras if c.detection %}
+      <a href="/reglages/{{ c.id }}" data-id="{{ c.id }}" {% if camera and camera.id == c.id %}aria-current="page"{% endif %}>
+        <span class="dot side-dot" aria-hidden="true"></span>{{ c.name }}
+      </a>
+      {% endfor %}
+      <p class="muted small" style="padding:.5rem .75rem 0">Une caméra apparaît ici quand <code>detection: true</code> figure dans sa section du fichier <code>{{ storage_info.config }}</code>.</p>
+    </nav>
+
+    <div class="main-col stack">
+    {% if camera %}
+      <div class="row">
+        <h1>{{ camera.name }}</h1>
+        <span class="muted" id="cam-info"></span>
+      </div>
+
+      <div class="cols">
+        <div class="col-wide">
+          <section class="card editor" id="editor" data-tool="include" aria-labelledby="zone-title">
+            <div class="card-pad row">
+              <h2 id="zone-title">Zones de détection</h2>
+              <span class="muted small">Seuls les mouvements dans les zones à surveiller, hors zones d'exclusion, sont analysés.</span>
+            </div>
+            <div class="view" id="view">
+              <div class="layer" id="layer">
+                <video muted autoplay playsinline></video>
+                <img id="mask" alt="" hidden>
+                <canvas id="zones" aria-label="Zones de détection : tracez un contour sur l'image"></canvas>
+              </div>
+              <div class="notice"><strong>Connexion à la caméra…</strong><small></small></div>
+            </div>
+            <div class="card-pad stack" style="gap:.6rem">
+              <div class="row" style="align-items:center;gap:.5rem .75rem">
+                <div class="seg" role="group" aria-label="Outil">
+                  <button type="button" data-tool="include" aria-pressed="true"><span class="swatch include" aria-hidden="true"></span>Zone à surveiller</button>
+                  <button type="button" data-tool="exclude" aria-pressed="false"><span class="swatch exclude" aria-hidden="true"></span>Zone d'exclusion</button>
+                  <button type="button" data-tool="pan" aria-pressed="false">Déplacer</button>
+                </div>
+                <div class="zoomgrp" role="group" aria-label="Zoom">
+                  <button type="button" class="btn" data-zoom="out" aria-label="Dézoomer">−</button>
+                  <button type="button" class="btn level" data-zoom="reset" aria-label="Réinitialiser le zoom">100 %</button>
+                  <button type="button" class="btn" data-zoom="in" aria-label="Zoomer">+</button>
+                </div>
+                <button type="button" class="btn" id="undo">Annuler</button>
+                <button type="button" class="btn" id="clear">Tout effacer</button>
+              </div>
+              <label class="row" style="align-items:center;gap:.5rem">
+                <input type="checkbox" id="show-mask" style="width:1.1rem;height:1.1rem">
+                Afficher le mouvement détecté
+              </label>
+              <p class="muted small" style="margin:0">Tracez le contour au doigt ou à la souris : la forme se ferme quand vous relâchez. Faites glisser un point pour retoucher une forme. Pour zoomer : molette, pincement ou boutons ; « Déplacer » sert à se déplacer dans l'image zoomée.</p>
+              <p class="small" style="margin:0" id="zone-summary" aria-live="polite"></p>
+            </div>
+          </section>
+
+          <section class="card card-pad stack" style="gap:.6rem" aria-labelledby="det-title">
+            <div class="row">
+              <h2 id="det-title">Dernières détections</h2>
+              <span class="muted small">Ce que l'analyse a retenu ou écarté, et pourquoi.</span>
+            </div>
+            <div class="scroll-x">
+              <table>
+                <thead><tr><th scope="col">Heure</th><th scope="col">Taille</th><th scope="col">Durée</th><th scope="col">Résultat</th></tr></thead>
+                <tbody id="detections"></tbody>
+              </table>
+            </div>
+            <p class="muted small" id="det-empty" style="margin:0"></p>
+          </section>
+        </div>
+
+        <div class="col-narrow">
+          <section class="card card-pad">
+            <fieldset class="modes">
+              <legend>Détection</legend>
+              <label class="mode"><input type="radio" name="mode" value="off">
+                <span><strong><span class="dot off" aria-hidden="true"></span>Arrêtée</strong><br>
+                <span class="muted small">Aucune analyse. Le direct reste disponible.</span></span></label>
+              <label class="mode"><input type="radio" name="mode" value="observe">
+                <span><strong><span class="dot obs" aria-hidden="true"></span>Observation</strong><br>
+                <span class="muted small">Détecte et liste les passages, sans enregistrer de photo. Pour régler les seuils.</span></span></label>
+              <label class="mode"><input type="radio" name="mode" value="record">
+                <span><strong><span class="dot rec" aria-hidden="true"></span>Enregistrement</strong><br>
+                <span class="muted small">Détecte et enregistre une photo de chaque passage.</span></span></label>
+            </fieldset>
+            <p class="small" style="margin:.6rem 0 0" id="det-state" aria-live="polite"></p>
+          </section>
+
+          <section class="card card-pad stack" style="gap:1.1rem" aria-labelledby="thr-title">
+            <h2 id="thr-title">Seuils</h2>
+            <div class="slider">
+              <div class="row"><label for="min_size">Taille minimale</label><output for="min_size" data-out="min_size"></output></div>
+              <input type="range" id="min_size" data-key="min_size" min="0.5" max="30" step="0.5">
+              <span class="muted small">Part de l'image que doit couvrir l'objet. La souris en occupe environ 10 %.</span>
+            </div>
+            <div class="slider">
+              <div class="row"><label for="sensitivity">Sensibilité</label><output for="sensitivity" data-out="sensitivity"></output></div>
+              <input type="range" id="sensitivity" data-key="sensitivity" min="1" max="10" step="1">
+              <span class="muted small">Plus elle est élevée, plus un faible contraste suffit à détecter un mouvement.</span>
+            </div>
+            <div class="slider">
+              <div class="row"><label for="persistence">Persistance</label><output for="persistence" data-out="persistence"></output></div>
+              <input type="range" id="persistence" data-key="persistence" min="1" max="15" step="1">
+              <span class="muted small">Images analysées consécutives (jusqu’à 15 par seconde) avant de retenir un passage.</span>
+            </div>
+            <div class="slider">
+              <div class="row"><label for="cooldown">Délai entre deux passages</label><output for="cooldown" data-out="cooldown"></output></div>
+              <input type="range" id="cooldown" data-key="cooldown" min="0" max="120" step="5">
+            </div>
+            <div class="row" style="align-items:center">
+              <button type="button" class="btn" id="reset">Rétablir les valeurs par défaut</button>
+              <span class="muted small" id="save-state" aria-live="polite">Appliqué immédiatement.</span>
+            </div>
+          </section>
+
+          <section class="card card-pad stack" style="gap:.6rem" aria-labelledby="sto-title">
+            <h2 id="sto-title">Stockage des photos</h2>
+            <dl class="kv">
+              <dt>NAS</dt><dd id="sto-state">…</dd>
+              <dt>Dossier</dt><dd class="mono">{% if storage_info.nas_dir %}{{ storage_info.nas_dir }}/{{ camera.id }}{% else %}non défini (stockage local){% endif %}</dd>
+              <dt>En attente</dt><dd id="sto-pending">…</dd>
+              <dt>Dernière copie</dt><dd id="sto-last">…</dd>
+            </dl>
+            <p class="muted small" style="margin:0">Le dossier racine se règle avec la clé <code>storage.nas_dir</code> du fichier <code>{{ storage_info.config }}</code>.</p>
+          </section>
+        </div>
+      </div>
+    {% else %}
+      <h1>Réglages</h1>
+      <p class="empty">Aucune caméra n'a la détection activée. Ajoutez <code>detection: true</code> à une caméra dans <code>{{ storage_info.config }}</code>, puis redémarrez le service.</p>
+    {% endif %}
+    </div>
+  </div>
+</main>
+{% endblock %}
+{% block scripts %}
+{% if camera %}
+<script>window.CAMERA = {{ {"id": camera.id, "settings": settings, "defaults": defaults} | tojson }};</script>
+<script src="{{ url_for('static', filename='hls.min.js') }}"></script>
+<script src="{{ url_for('static', filename='player.js') }}?v={{ page.version }}"></script>
+<script src="{{ url_for('static', filename='settings.js') }}?v={{ page.version }}"></script>
+{% else %}
+<script>
+document.addEventListener("rtspweb:status", e => {
+  e.detail.cameras.forEach(c => {
+    const dot = document.querySelector(`.side a[data-id="${c.id}"] .side-dot`);
+    if (dot && c.detection) dot.className = "dot side-dot " + ({off: "off", observe: "obs", record: "rec"})[c.detection.mode];
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

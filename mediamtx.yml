@@ -1,0 +1,52 @@
+# MediaMTX du serveur rtsp-web : relaie les caméras vers les navigateurs.
+# Les caméras ne se déclarent pas ici mais dans /etc/rtsp-web/config.yaml :
+# l'application les transmet à MediaMTX par son API locale.
+
+logLevel: info
+logDestinations: [stdout]
+
+# Accès : lecture ouverte au réseau local, publication et API en local uniquement
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+      - action: playback
+  - user: any
+    pass:
+    ips: ["127.0.0.1", "::1"]
+    permissions:
+      - action: publish
+      - action: api
+      - action: metrics
+
+api: true
+apiAddress: 127.0.0.1:9997
+metrics: false
+pprof: false
+playback: false
+
+# RTSP réémis par le serveur (utile pour un enregistreur ou VLC)
+rtsp: true
+rtspAddress: :8554
+rtspTransports: [tcp, udp]
+
+rtmp: false
+srt: false
+moq: false
+
+# HLS : solution de repli si WebRTC est bloqué
+hls: true
+hlsAddress: :8888
+hlsVariant: lowLatency
+hlsAllowOrigins: ["*"]
+
+# WebRTC : lecture quasi temps réel dans le navigateur
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcAllowOrigins: ["*"]
+
+paths: {}

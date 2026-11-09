@@ -1,0 +1,31 @@
+[Unit]
+Description=rtsp-web : interface web de visionnage et détection de mouvement
+After=network-online.target mediamtx.service remote-fs.target
+Wants=network-online.target mediamtx.service
+
+[Service]
+Type=simple
+User=rtsp-web
+Group=rtsp-web
+ExecStart=/usr/bin/python3 /opt/rtsp-web/app.py --config /etc/rtsp-web/config.yaml
+Environment=PYTHONUNBUFFERED=1
+StateDirectory=rtsp-web
+StateDirectoryMode=0750
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+# Durcissement. ProtectSystem=full (et non strict) laisse /mnt et /media
+# accessibles en écriture, pour le partage du NAS monté par autofs ;
+# les droits de l'utilisateur rtsp-web limitent ensuite ce qu'il peut écrire.
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
