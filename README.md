@@ -1,4 +1,4 @@
-# rtsp-web
+# mouse-watch
 
 Interface web de visionnage de caméras pour le réseau local, sous Debian,
 avec détection de mouvement et photo de chaque passage.
