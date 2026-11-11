@@ -1,88 +1,93 @@
 # mouse-watch
 
-Interface web de visionnage de caméras pour le réseau local, sous Debian,
-avec détection de mouvement, photo et extrait vidéo de chaque passage.
+*[Version française](README.fr.md)*
 
-> Le dépôt s'appelle mouse-watch ; l'application s'installe sous son nom
-> technique, rtsp-web (service, dossiers et configuration).
+Self-hosted wildlife camera trap for the local network, running on Debian:
+live view of RTSP cameras in the browser, motion detection, and a photo and
+video clip of each passage.
+
+> The repository is named mouse-watch; the application installs under its
+> technical name, rtsp-web (service, folders and configuration).
+>
+> The web interface is currently in French. Interface labels are given below
+> in French, with their English meaning.
 
 ```
-Raspberry Pi + caméra          Serveur Debian                                  Navigateurs
-(MediaMTX)          ──RTSP──►  MediaMTX (relais) ──WebRTC / HLS──────────────► Direct, Passages,
-                               rtsp-web : détection (OpenCV), interface :8080   Réglages
+Raspberry Pi + camera          Debian server                                   Browsers
+(MediaMTX)          ──RTSP──►  MediaMTX (relay) ──WebRTC / HLS───────────────► Live view, Passages,
+                               rtsp-web: detection (OpenCV), web UI :8080       Settings
                                    │
-                                   └── photos et extraits vidéo ──► disque local ──► NAS (autofs)
+                                   └── photos and video clips ──► local disk ──► NAS (autofs)
 ```
 
-## Fonctions
+## Features
 
-- **Direct** : mosaïque des caméras en quasi temps réel (WebRTC, repli HLS),
-  zoom numérique, capture d'image, plein écran, et sélecteur de détection
-  sur chaque vignette : *Arrêtée*, *Observation* ou *Enregistrement*.
-- **Passages** : photos et extraits vidéo classés par nuit, lecture,
-  téléchargement, suppression.
-- **Réglages** (par caméra) : zones de détection tracées à main levée sur
-  l'image en direct, zones d'exclusion, seuils, affichage du mouvement
-  détecté, journal des dernières détections (retenues ou écartées, et
-  pourquoi), extrait vidéo et ses marges avant et après, état du stockage.
+- **Live view** (*Direct*): grid of all cameras in near real time (WebRTC,
+  with HLS fallback), digital zoom, image capture, full screen, and a
+  detection selector on each tile: *Arrêtée* (off), *Observation*
+  (detect only) or *Enregistrement* (recording).
+- **Passages**: photos and video clips grouped by night, with playback,
+  download and deletion.
+- **Settings** (*Réglages*, per camera): detection zones drawn freehand on
+  the live image, exclusion zones, thresholds, live display of detected
+  motion, log of recent detections (kept or discarded, and why), video clip
+  and its margins before and after, storage status.
 
-## Installation ou mise à jour (Debian 12 ou 13)
+## Installing or upgrading (Debian 12 or 13)
 
 ```bash
-curl -L -o mouse-watch-4.0.0.tar.gz https://github.com/<votre-compte>/mouse-watch/archive/refs/tags/v4.0.0.tar.gz
+curl -L -o mouse-watch-4.0.0.tar.gz https://github.com/<your-account>/mouse-watch/archive/refs/tags/v4.0.0.tar.gz
 tar xzf mouse-watch-4.0.0.tar.gz && cd mouse-watch-4.0.0
 sudo ./install.sh
 sudo nano /etc/rtsp-web/config.yaml
 sudo systemctl restart rtsp-web
 ```
 
-Le téléchargement direct suppose un dépôt public. Pour un dépôt privé,
-passez par Git sur le serveur, après `gh auth login` :
+Direct download requires a public repository. For a private repository, use
+Git on the server, after `gh auth login`:
 
 ```bash
-git clone https://github.com/<votre-compte>/mouse-watch.git
+git clone https://github.com/<your-account>/mouse-watch.git
 cd mouse-watch && git checkout v4.0.0
 ```
 
-Ouvrez ensuite `http://<adresse-du-serveur>:8080/`.
+Then open `http://<server-address>:8080/`.
 
-Le script installe MediaMTX (version figée), Flask, Waitress et OpenCV
-depuis les dépôts Debian, crée deux utilisateurs système et deux services
-démarrés au boot : `mediamtx` et `rtsp-web`. Il conserve un
-`/etc/rtsp-web/config.yaml` existant et signale ce qui manque pour la
-version 4.
+The script installs MediaMTX (pinned version), Flask, Waitress and OpenCV
+from the Debian repositories, creates two system users and two services
+started at boot: `mediamtx` and `rtsp-web`. It keeps an existing
+`/etc/rtsp-web/config.yaml` and reports anything missing for version 4.
 
-**Depuis la version 3** : relancez `sudo ./install.sh`. Rien d'autre n'est
-obligatoire : l'extrait vidéo est activé par défaut, avec un tampon de
-30 minutes. La section `video` de `config.yaml` permet de changer cette durée.
+**From version 3**: run `sudo ./install.sh` again. Nothing else is required:
+video clips are enabled by default, with a 30-minute buffer. The `video`
+section of `config.yaml` changes this duration.
 
-**Depuis la version 2** : relancez `sudo ./install.sh`, puis ajoutez à
-`/etc/rtsp-web/config.yaml` la section `storage`, `detection: true` sur la
-caméra concernée et, si besoin, `rtsp_port` dans la section `mediamtx`
-(modèle : `config.yaml` de l'archive).
+**From version 2**: run `sudo ./install.sh` again, then add to
+`/etc/rtsp-web/config.yaml` the `storage` section, `detection: true` on the
+camera concerned and, if needed, `rtsp_port` in the `mediamtx` section (see
+the `config.yaml` template in the archive).
 
 ## Configuration
 
-Deux niveaux de réglages :
+Settings come in two levels:
 
-- **`/etc/rtsp-web/config.yaml`**, édité à la main : caméras, ports, dossier
-  du NAS, durée de conservation, valeurs de départ des seuils. Redémarrer le
-  service après modification.
-- **L'interface (Réglages)** : position du sélecteur, zones, seuils, extrait
-  vidéo et marges. Pris en
-  compte immédiatement et conservés dans `/var/lib/rtsp-web/settings.json`
-  (fichier géré par l'application).
+- **`/etc/rtsp-web/config.yaml`**, edited by hand: cameras, ports, NAS
+  folder, retention, default thresholds. Restart the service after any
+  change.
+- **The web interface (*Réglages*)**: selector position, zones, thresholds,
+  video clip and margins. Applied immediately and stored in
+  `/var/lib/rtsp-web/settings.json` (managed by the application).
 
-Extrait :
+Excerpt:
 
 ```yaml
 storage:
-  nas_dir: /mnt/nas/cameras              # vide : stockage local seul
-  local_dir: /var/lib/rtsp-web/pending   # tampon si le NAS ne répond pas
-  keep_days: 0                           # 0 = jamais d'effacement automatique
+  nas_dir: /mnt/nas/cameras              # empty: local storage only
+  local_dir: /var/lib/rtsp-web/pending   # buffer while the NAS is unreachable
+  keep_days: 0                           # 0 = never delete automatically
 
 video:
-  buffer_minutes: 30                     # tampon de l'enregistrement continu
+  buffer_minutes: 30                     # continuous recording buffer
 
 cameras:
   - id: terrier
@@ -91,18 +96,18 @@ cameras:
     detection: true
 ```
 
-## Stockage sur le NAS
+## Storage on the NAS
 
-Les photos sont rangées par caméra puis par date :
-`/mnt/nas/cameras/terrier/2026-11-12/02-14-37.jpg`, accompagnées d'une
-fiche `.json` (heure, durée, taille de l'objet).
+Photos are filed by camera, then by date:
+`/mnt/nas/cameras/terrier/2026-11-12/02-14-37.jpg`, along with a `.json`
+record (time, duration, object size).
 
-Chaque photo est d'abord écrite sur le serveur, puis copiée sur le NAS dès
-qu'il répond. Un NAS éteint ou injoignable ne bloque ni la détection ni
-l'interface ; l'en-tête de l'interface indique son état et le nombre de
-photos en attente.
+Each photo is first written on the server, then copied to the NAS as soon as
+it responds. A NAS that is off or unreachable blocks neither detection nor
+the interface; the interface header shows its status and the number of
+photos waiting.
 
-Exemple de montage autofs d'un partage SMB (paquets `autofs` et `cifs-utils`) :
+Example autofs mount of an SMB share (packages `autofs` and `cifs-utils`):
 
 ```bash
 # /etc/auto.master.d/nas.autofs
@@ -116,117 +121,116 @@ username=...
 password=...
 ```
 
-Pour un partage NFS (paquet `nfs-common`) :
-`cameras  -fstype=nfs4,rw  192.168.1.10:/volume1/cameras`, en donnant au
-dossier côté NAS les droits d'écriture pour l'utilisateur `rtsp-web` (même
-identifiant numérique que sur le serveur, ou dossier ouvert en écriture).
+For an NFS share (package `nfs-common`):
+`cameras  -fstype=nfs4,rw  192.168.1.10:/volume1/cameras`, giving the
+`rtsp-web` user write access to the folder on the NAS (same numeric ID as on
+the server, or a world-writable folder).
 
-Évitez l'option `--ghost` d'autofs : elle fait apparaître le dossier même
-quand le partage n'est pas monté.
+Avoid the autofs `--ghost` option: it shows the folder even when the share
+is not mounted.
 
-## Extraits vidéo
+## Video clips
 
-Chaque passage enregistré produit, en plus de la photo, un extrait MP4
-couvrant 2 secondes avant le début du passage et 2 secondes après sa fin
-(marges réglables de 0 à 10 secondes dans **Réglages**). L'extrait porte le
-nom de la photo (`02-14-37.mp4`) et la suit sur le NAS.
+Each recorded passage produces, in addition to the photo, an MP4 clip
+covering 2 seconds before the passage starts and 2 seconds after it ends
+(margins adjustable from 0 to 10 seconds in *Réglages*). The clip has the
+same name as the photo (`02-14-37.mp4`) and follows it to the NAS.
 
-Pour remonter avant le déclenchement, MediaMTX enregistre le flux en
-continu dans `/var/lib/mediamtx/recordings` et efface ce qui dépasse la
-durée du tampon (30 minutes par défaut). Cet enregistrement ne tourne que
-pour les caméras en position **Enregistrement** avec l'extrait vidéo coché.
-L'extrait est découpé sans réencodage, quelques secondes après la fin du
-passage ; il peut commencer un peu plus tôt que demandé, sur l'image clé
-précédente.
+To go back in time before the trigger, MediaMTX records the stream
+continuously in `/var/lib/mediamtx/recordings` and deletes anything older
+than the buffer duration (30 minutes by default). This recording only runs
+for cameras set to *Enregistrement* with the video clip option checked. The
+clip is cut without re-encoding a few seconds after the passage ends; it may
+start slightly earlier than requested, on the previous keyframe.
 
-Si l'extrait échoue, la photo est tout de même conservée, et le passage est
-marqué « vidéo indisponible ».
+If a clip fails, the photo is still kept, and the passage is marked "video
+unavailable".
 
-## Régler la détection
+## Tuning detection
 
-1. Dans **Réglages**, tracez la zone autour de l'entrée du terrier, au ras
-   du sol. Ajoutez au besoin une zone d'exclusion sur un élément qui bouge
-   au vent.
-2. Passez en **Observation** pour une première nuit : rien n'est
-   enregistré, mais le tableau « Dernières détections » indique ce qui a été
-   retenu ou écarté, et pourquoi.
-3. Ajustez les seuils :
+1. In *Réglages*, draw the zone around the burrow entrance, at ground level.
+   If needed, add an exclusion zone over anything that moves in the wind.
+2. Switch to *Observation* for a first night: nothing is recorded, but the
+   *Dernières détections* (recent detections) table shows what was kept or
+   discarded, and why.
+3. Adjust the thresholds:
 
-   | Seuil | Effet | Départ |
+   | Threshold | Effect | Default |
    | --- | --- | --- |
-   | Taille minimale | écarte ce qui est plus petit (insectes, feuilles) | 4 % |
-   | Sensibilité | contraste nécessaire pour voir un mouvement | 6/10 |
-   | Persistance | images consécutives avant de retenir un passage | 3 |
-   | Délai entre deux passages | un aller-retour = une seule photo | 10 s |
+   | Minimum size | discards anything smaller (insects, leaves) | 4 % |
+   | Sensitivity | contrast needed to see motion | 6/10 |
+   | Persistence | consecutive frames before a passage is kept | 3 |
+   | Delay between passages | a round trip gives a single photo | 10 s |
 
-4. Passez en **Enregistrement**.
+4. Switch to *Enregistrement*.
 
-Les changements brusques de toute l'image (allumage de l'éclairage
-infrarouge, variation d'exposition) sont ignorés automatiquement.
+Sudden changes across the whole image (infrared lighting switching on,
+exposure changes) are ignored automatically.
 
-## Réseau
+## Network
 
-| Port | Usage |
+| Port | Use |
 | --- | --- |
-| 8080/tcp | interface web |
-| 8889/tcp | WebRTC (établissement de la connexion) |
-| 8189/udp | WebRTC (vidéo) |
-| 8888/tcp | HLS (repli) |
-| 8554/tcp | RTSP réémis par le serveur (facultatif : VLC, enregistreur) |
+| 8080/tcp | web interface |
+| 8889/tcp | WebRTC (connection setup) |
+| 8189/udp | WebRTC (video) |
+| 8888/tcp | HLS (fallback) |
+| 8554/tcp | RTSP re-streamed by the server (optional: VLC, recorder) |
 
-Le service de relecture de MediaMTX (9996/tcp) n'écoute que sur le serveur
-lui-même : il n'y a pas à l'ouvrir.
+The MediaMTX playback service (9996/tcp) only listens on the server itself:
+there is no need to open it.
 
-## Exploitation
+## Operation
 
 ```bash
 systemctl status mediamtx rtsp-web
-journalctl -u rtsp-web -f          # caméras, détection, passages, NAS
-journalctl -u mediamtx -f          # connexions vidéo
+journalctl -u rtsp-web -f          # cameras, detection, passages, NAS
+journalctl -u mediamtx -f          # video connections
 curl http://localhost:8080/healthz
 ```
 
-## Limites
+## Limitations
 
-- **Accès** : pas d'authentification ; l'interface est destinée à un réseau
-  local de confiance. Ne pas l'exposer sur Internet sans reverse proxy avec
-  HTTPS et authentification.
-- **Codec** : WebRTC lit le H.264 partout ; le H.265 n'est lu que par
-  certains navigateurs.
-- **Charge** : la détection décode le flux complet de la caméra ; l'analyse
-  elle-même, faite en 320 pixels de large, est légère.
-- **Disque du serveur** : le tampon vidéo occupe 1 à 2 Go par heure et par
-  caméra en 1080p, soit 0,5 à 1 Go avec le réglage par défaut. Chaque extrait
-  pèse 1 à 3 Mo sur le NAS.
+- **Access**: no authentication; the interface is meant for a trusted local
+  network. Do not expose it to the Internet without a reverse proxy with
+  HTTPS and authentication.
+- **Codec**: WebRTC plays H.264 everywhere; H.265 only plays in some
+  browsers.
+- **Load**: detection decodes the full camera stream; the analysis itself,
+  done at 320 pixels wide, is lightweight.
+- **Server disk**: the video buffer uses 1 to 2 GB per hour and per camera
+  in 1080p, i.e. 0.5 to 1 GB with the default setting. Each clip weighs 1 to
+  3 MB on the NAS.
+- **Language**: the interface, configuration comments and logs are in French.
 
-## Organisation du code
+## Code layout
 
-| Fichier | Rôle |
+| File | Role |
 | --- | --- |
-| `app.py` | démarrage, pages et API web |
-| `mediamtx.py` | déclaration des caméras auprès de MediaMTX, état des flux |
-| `detection.py` | détection de mouvement (OpenCV) |
-| `storage.py` | photos : écriture locale, copie vers le NAS, index SQLite |
-| `settings.py` | réglages de l'interface (`settings.json`) |
-| `recording.py` | extraits vidéo, tirés de l'enregistrement continu de MediaMTX |
-| `templates/`, `static/` | interface web |
+| `app.py` | startup, web pages and API |
+| `mediamtx.py` | registers cameras with MediaMTX, stream status |
+| `detection.py` | motion detection (OpenCV) |
+| `storage.py` | photos: local write, copy to the NAS, SQLite index |
+| `settings.py` | interface settings (`settings.json`) |
+| `recording.py` | video clips, cut from MediaMTX continuous recording |
+| `templates/`, `static/` | web interface |
 
-## Développement
+## Development
 
 ```bash
 sudo apt install python3-flask python3-yaml python3-opencv python3-numpy
 mediamtx mediamtx.yml &
-# dans config.yaml : storage.state_dir et storage.local_dir vers un dossier local
+# in config.yaml: point storage.state_dir and storage.local_dir to a local folder
 python3 app.py -c config.yaml -v
 ```
 
-## Licence
+## License
 
-mouse-watch (nom technique : rtsp-web) est un logiciel libre, distribué sous licence
-[GNU GPL version 3 ou ultérieure](LICENSE) (GPL-3.0-or-later). Vous pouvez
-l'utiliser, l'étudier, le modifier et le redistribuer ; toute version
-modifiée redistribuée doit l'être sous la même licence, avec son code source.
+mouse-watch (technical name: rtsp-web) is free software, released under the
+[GNU GPL version 3 or later](LICENSE) (GPL-3.0-or-later). You may use,
+study, modify and redistribute it; any modified version you redistribute
+must be under the same license, with its source code.
 
-Les composants utilisés gardent leur propre licence : MediaMTX (MIT),
-Flask et Waitress (BSD, ZPL), OpenCV et hls.js (Apache 2.0), tous
-compatibles avec la GPL-3.0.
+The components used keep their own licenses: MediaMTX (MIT), Flask and
+Waitress (BSD, ZPL), OpenCV and hls.js (Apache 2.0), all compatible with
+GPL-3.0.
