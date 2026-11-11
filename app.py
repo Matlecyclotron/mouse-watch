@@ -31,7 +31,7 @@ from recording import Recorder  # noqa: E402
 from settings import SettingsError, SettingsStore  # noqa: E402
 from storage import NasTimeout, Storage  # noqa: E402
 
-__version__ = "4.0.0"
+__version__ = "4.0.1"
 
 log = logging.getLogger("rtsp-web")
 ID_RE = re.compile(r"^[a-z0-9_-]{1,32}$")

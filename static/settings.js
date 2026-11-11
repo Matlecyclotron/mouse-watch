@@ -371,6 +371,8 @@
           "L'enregistrement continu démarre en position Enregistrement.";
         $("#det-state").textContent =
           det.mode === "off" ? "" :
+          det.state === "running" && det.relearning
+            ? "Réapprentissage du décor (démarrage ou changement brusque de luminosité) : analyse reprise dans quelques secondes." :
           det.state === "running" ? `Analyse en cours (${RW.fmtNumber(det.fps)} images par seconde).` :
           det.state === "error" ? `Analyse indisponible : ${det.error}` : "Démarrage de l'analyse…";
       }

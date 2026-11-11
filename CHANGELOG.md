@@ -1,5 +1,17 @@
 # Historique des versions
 
+## 4.0.1 — 2026-11-11
+
+- Correction : après un changement brusque de luminosité, la détection
+  pouvait rester bloquée (image entièrement vue « en mouvement ») jusqu'à
+  un passage par la position Arrêtée. Le décor est désormais entièrement
+  réappris après chaque changement global de l'image.
+- Garde-fou : si l'image reste largement « en mouvement » plus de 20 s
+  d'affilée, le décor est réappris automatiquement.
+- Le décor n'est plus figé par de petites taches de bruit, seulement par un
+  objet de taille suffisante : meilleure adaptation en faible lumière.
+- Réglages : message pendant le réapprentissage du décor.
+
 ## 4.0.0 — 2026-11-10
 
 - Extrait vidéo de chaque passage enregistré : de 2 s avant le début à 2 s

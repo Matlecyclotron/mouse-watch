@@ -30,6 +30,8 @@ END_GAP = 0.7                # secondes sans mouvement pour clore un passage
 MAX_EVENT = 60.0             # durée maximale d'un passage
 LEARNING_RATE = 0.005        # adaptation du décor (≈ 15 s à 15 im/s)
 FREEZE_MAX = 60.0            # gel maximal du décor pendant une présence
+STUCK_LEVEL = 25.0           # % de l'image vu en mouvement sans interruption...
+STUCK_TIME = 20.0            # ... pendant ce temps (s) : réapprentissage forcé
 LOG_SIZE = 50
 
 RESULTS = {
@@ -73,11 +75,11 @@ class Detector(threading.Thread):
         self.bg = None
         self.bg_sensitivity = None
         self.frames = 0
+        self.busy_since = None
         self.zone_key = None
         self.zone_mask = None
         self.episode = None
         self.pause_until = 0.0
-        self.relearn = False
         self.last_event_end = 0.0
 
     def _on_settings(self, cid):
@@ -90,7 +92,21 @@ class Detector(threading.Thread):
 
     def status(self) -> dict:
         with self._lock:
-            return {"state": self.state, "error": self.error, "fps": round(self.fps, 1)}
+            relearning = self.state == "running" and (self.bg is None or self.frames <= WARMUP_FRAMES)
+            return {"state": self.state, "error": self.error, "fps": round(self.fps, 1),
+                    "relearning": relearning}
+
+    def _relearn(self):
+        """Réapprend entièrement le décor (nouveau modèle + apprentissage initial).
+
+        Une simple réinitialisation sur une seule image ne suffit pas : elle
+        ignore le bruit normal du capteur, fort en faible lumière, qui serait
+        alors pris pour du mouvement partout (bug corrigé en 4.0.1)."""
+        self.bg = None
+        self.episode = None
+        self.busy_since = None
+        with self._lock:
+            self.last_mask = None
 
     def detections(self) -> list:
         with self._lock:
@@ -214,15 +230,19 @@ class Detector(threading.Thread):
             self.bg_sensitivity = cfg["sensitivity"]
             self.frames = 0
             self.episode = None
+            with self._lock:
+                self.last_mask = None
 
         self.frames += 1
         if self.frames <= WARMUP_FRAMES:
             self.bg.apply(gray, learningRate=-1)
             return
-        if self.relearn:
-            lr, self.relearn = 1.0, False
-        elif self.episode and now - self.episode["mono_start"] < FREEZE_MAX:
-            lr = 0.0                           # présence : le décor ne bouge pas
+        if (self.episode and self.episode["best"] > 0
+                and now - self.episode["mono_start"] < FREEZE_MAX):
+            # Présence d'un objet de taille suffisante : le décor est figé pour
+            # ne pas absorber une souris immobile. Les petites taches (bruit du
+            # capteur) ne figent rien, sinon le décor ne s'adapterait plus.
+            lr = 0.0
         elif now < self.pause_until:
             lr = 0.05
         else:
@@ -235,12 +255,25 @@ class Detector(threading.Thread):
 
         total = 100.0 * cv2.countNonZero(fg) / fg.size
         if total >= GLOBAL_CHANGE:
-            if now >= self.pause_until:
-                self._log(time.time(), total, 0.0, "global")
-            self.episode = None
-            self.relearn = True
+            self._log(time.time(), total, 0.0, "global")
+            log.info("[%s] changement global de l'image (%.0f %%) : réapprentissage du décor",
+                     self.cid, total)
+            self._relearn()
             self.pause_until = now + GLOBAL_PAUSE
             return
+        # Garde-fou : une grande part de l'image « en mouvement » sans
+        # interruption pendant longtemps signale un décor qui ne correspond
+        # plus à la réalité ; on le réapprend.
+        if total >= STUCK_LEVEL:
+            if self.busy_since is None:
+                self.busy_since = now
+            elif now - self.busy_since >= STUCK_TIME:
+                log.warning("[%s] image vue en mouvement depuis %.0f s : réapprentissage forcé",
+                            self.cid, now - self.busy_since)
+                self._relearn()
+                return
+        else:
+            self.busy_since = None
         if now < self.pause_until:
             return
 
