@@ -7,6 +7,9 @@
   const filter = document.getElementById("camera-filter");
   const moreBtn = document.getElementById("more");
   const dialog = document.getElementById("viewer");
+  const video = document.getElementById("viewer-video");
+  const photo = document.getElementById("viewer-img");
+  const switcher = document.getElementById("viewer-switch");
   let events = [];
   let current = null;
 
@@ -17,11 +20,20 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.setAttribute("aria-label", `Ouvrir la photo de ${RW.fmtTime(ev.start)}`);
+    const media = document.createElement("span");
+    media.className = "media";
     const img = document.createElement("img");
     img.loading = "lazy";
     img.src = `/api/events/${ev.id}/thumb`;
     img.alt = "";
-    btn.append(img);
+    media.append(img);
+    if (ev.clip_state === "ok") {
+      const badge = document.createElement("span");
+      badge.className = "clip-badge";
+      badge.textContent = "▶ vidéo";
+      media.append(badge);
+    }
+    btn.append(media);
     btn.addEventListener("click", () => open(ev));
     const cap = document.createElement("figcaption");
     const a = document.createElement("span");
@@ -70,21 +82,49 @@
     events = reset ? batch : events.concat(batch);
     moreBtn.hidden = batch.length < PAGE;
     render();
+    // Extraits encore en préparation : rafraîchir la liste un peu plus tard
+    clearTimeout(refreshTimer);
+    if (events.some(ev => ev.clip_state === "pending")) {
+      refreshTimer = setTimeout(() => { if (!dialog.open) load(); }, 8000);
+    }
+  }
+  let refreshTimer = null;
+
+  function show(which) {
+    const hasClip = current?.clip_state === "ok";
+    which = hasClip ? which : "photo";
+    video.hidden = which !== "video";
+    photo.hidden = which !== "photo";
+    if (which === "video") video.play().catch(() => {}); else video.pause();
+    switcher.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.show === which)));
   }
 
   function open(ev) {
     current = ev;
     const d = new Date(ev.start * 1000);
-    document.getElementById("viewer-img").src = `/api/events/${ev.id}/photo`;
-    document.getElementById("viewer-img").alt = `Photo du passage, ${ev.camera_name}`;
+    const hasClip = ev.clip_state === "ok";
+    photo.src = `/api/events/${ev.id}/photo`;
+    photo.alt = `Photo du passage, ${ev.camera_name}`;
+    video.removeAttribute("src");
+    if (hasClip) video.src = `/api/events/${ev.id}/clip`;
+    video.load();
+    switcher.hidden = !hasClip;
+    const dl = document.getElementById("viewer-download-clip");
+    dl.hidden = !hasClip;
+    dl.href = `/api/events/${ev.id}/clip?download=1`;
+    const clipNote = { pending: " · extrait vidéo en préparation", failed: " · vidéo indisponible" }[ev.clip_state] || "";
     document.getElementById("viewer-title").textContent =
       `${ev.camera_name} · ${d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} à ${RW.fmtTime(ev.start)}`;
     document.getElementById("viewer-info").textContent =
       `Durée ${RW.fmtNumber(ev.duration)} s · taille ${RW.fmtNumber(ev.size)} % de l'image` +
-      (ev.location === "pending" ? " · en attente de copie sur le NAS" : "");
+      clipNote + (ev.location === "pending" ? " · en attente de copie sur le NAS" : "");
     document.getElementById("viewer-download").href = `/api/events/${ev.id}/photo?download=1`;
     dialog.showModal();
+    show(hasClip ? "video" : "photo");
   }
+
+  switcher.querySelectorAll("button").forEach(b => b.addEventListener("click", () => show(b.dataset.show)));
+  dialog.addEventListener("close", () => { video.pause(); });
 
   document.getElementById("viewer-close").addEventListener("click", () => dialog.close());
   document.getElementById("viewer-delete").addEventListener("click", async () => {

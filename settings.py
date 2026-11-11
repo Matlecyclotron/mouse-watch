@@ -24,11 +24,19 @@ THRESHOLD_DEFAULTS = {
     "persistence": 3,      # images consécutives
     "cooldown": 10,        # secondes entre deux passages
 }
+# Extrait vidéo (version 4) : activation et marges autour du passage
+VIDEO_DEFAULTS = {
+    "video": True,
+    "pre_roll": 2,         # secondes avant le début du passage
+    "post_roll": 2,        # secondes après la fin du passage
+}
 LIMITS = {
     "min_size": (0.5, 50.0, float),
     "sensitivity": (1, 10, int),
     "persistence": (1, 30, int),
     "cooldown": (0, 600, int),
+    "pre_roll": (0, 10, int),
+    "post_roll": (0, 10, int),
 }
 MAX_POLYGONS = 20
 MAX_POINTS = 200
@@ -82,7 +90,8 @@ class SettingsStore:
         return min(high, max(low, value))
 
     def _blank(self) -> dict:
-        return {"mode": "off", "zones": {"include": [], "exclude": []}, **self.defaults}
+        return {"mode": "off", "zones": {"include": [], "exclude": []},
+                **self.defaults, **VIDEO_DEFAULTS}
 
     def _load(self):
         raw = {}
@@ -126,6 +135,10 @@ class SettingsStore:
                     "include": _validate_polygons(value.get("include", [])),
                     "exclude": _validate_polygons(value.get("exclude", [])),
                 }
+            elif key == "video":
+                if not isinstance(value, bool):
+                    raise SettingsError("valeur invalide pour video")
+                result["video"] = value
             elif key in LIMITS:
                 result[key] = self._clamp(key, value)
             # les clés inconnues sont ignorées

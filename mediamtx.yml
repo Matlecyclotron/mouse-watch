@@ -13,7 +13,6 @@ authInternalUsers:
     ips: []
     permissions:
       - action: read
-      - action: playback
   - user: any
     pass:
     ips: ["127.0.0.1", "::1"]
@@ -21,12 +20,16 @@ authInternalUsers:
       - action: publish
       - action: api
       - action: metrics
+      - action: playback
 
 api: true
 apiAddress: 127.0.0.1:9997
 metrics: false
 pprof: false
-playback: false
+# Relecture des enregistrements : utilisée par rtsp-web pour découper
+# les extraits vidéo des passages (accès local uniquement)
+playback: true
+playbackAddress: 127.0.0.1:9996
 
 # RTSP réémis par le serveur (utile pour un enregistreur ou VLC)
 rtsp: true

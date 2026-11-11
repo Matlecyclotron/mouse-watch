@@ -86,7 +86,7 @@
                 <span class="muted small">Détecte et liste les passages, sans enregistrer de photo. Pour régler les seuils.</span></span></label>
               <label class="mode"><input type="radio" name="mode" value="record">
                 <span><strong><span class="dot rec" aria-hidden="true"></span>Enregistrement</strong><br>
-                <span class="muted small">Détecte et enregistre une photo de chaque passage.</span></span></label>
+                <span class="muted small">Détecte et enregistre une photo de chaque passage, et son extrait vidéo si l'option est cochée.</span></span></label>
             </fieldset>
             <p class="small" style="margin:.6rem 0 0" id="det-state" aria-live="polite"></p>
           </section>
@@ -116,6 +116,23 @@
               <button type="button" class="btn" id="reset">Rétablir les valeurs par défaut</button>
               <span class="muted small" id="save-state" aria-live="polite">Appliqué immédiatement.</span>
             </div>
+          </section>
+
+          <section class="card card-pad stack" style="gap:1.1rem" aria-labelledby="vid-title">
+            <h2 id="vid-title">Extrait vidéo</h2>
+            <label class="row" style="align-items:center;gap:.5rem">
+              <input type="checkbox" id="video" style="width:1.1rem;height:1.1rem">
+              Enregistrer aussi un extrait vidéo de chaque passage
+            </label>
+            <div class="slider">
+              <div class="row"><label for="pre_roll">Avant le passage</label><output for="pre_roll" data-out="pre_roll"></output></div>
+              <input type="range" id="pre_roll" data-key="pre_roll" min="0" max="10" step="1">
+            </div>
+            <div class="slider">
+              <div class="row"><label for="post_roll">Après le passage</label><output for="post_roll" data-out="post_roll"></output></div>
+              <input type="range" id="post_roll" data-key="post_roll" min="0" max="10" step="1">
+            </div>
+            <p class="muted small" style="margin:0" id="vid-state" aria-live="polite"></p>
           </section>
 
           <section class="card card-pad stack" style="gap:.6rem" aria-labelledby="sto-title">

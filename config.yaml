@@ -15,12 +15,20 @@ mediamtx:
   rtsp_port: 8554
   webrtc_port: 8889
   hls_port: 8888
+  playback: http://127.0.0.1:9996        # relecture des enregistrements (extraits vidéo)
 
 # Stockage des photos de passages
 storage:
   nas_dir: /mnt/nas/cameras              # partage du NAS monté par autofs ; vide = stockage local seul
   local_dir: /var/lib/rtsp-web/pending   # tampon local si le NAS ne répond pas
   keep_days: 0                           # effacement automatique après N jours ; 0 = jamais
+
+# Extraits vidéo des passages (version 4). MediaMTX enregistre le flux en
+# continu sur ce serveur, uniquement pour les caméras en position
+# « Enregistrement » avec l'extrait vidéo coché, et efface au-delà de cette durée.
+# Activation et marges avant/après : dans l'interface (Réglages).
+video:
+  buffer_minutes: 30                       # 1 à 2 Go par heure en 1080p
 
 # Valeurs de départ des seuils (bouton « Rétablir les valeurs par défaut »)
 detection_defaults:

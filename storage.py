@@ -50,6 +50,11 @@ class Storage(threading.Thread):
             end REAL NOT NULL, size REAL NOT NULL, rel TEXT NOT NULL,
             location TEXT NOT NULL)""")
         self._db.execute("CREATE INDEX IF NOT EXISTS events_start ON events(start)")
+        columns = {r[1] for r in self._db.execute("PRAGMA table_info(events)")}
+        if "clip_state" not in columns:          # mise à jour depuis la version 3
+            self._db.execute("ALTER TABLE events ADD COLUMN clip_state TEXT NOT NULL DEFAULT 'none'")
+        # Extraits en cours de préparation lors d'un arrêt : perdus, la photo reste
+        self._db.execute("UPDATE events SET clip_state='failed' WHERE clip_state='pending'")
         self._db.commit()
 
         # Un seul fil pour toutes les opérations sur le NAS
@@ -82,13 +87,21 @@ class Storage(threading.Thread):
 
     @staticmethod
     def _row(row) -> dict:
-        eid, camera, start, end, size, rel, location = row
+        eid, camera, start, end, size, rel, location, clip_state = row
         return {"id": eid, "camera": camera, "start": start, "end": end,
                 "duration": round(end - start, 1), "size": round(size, 1),
-                "file": rel, "location": location}
+                "file": rel, "location": location, "clip_state": clip_state,
+                "clip": rel[:-4] + ".mp4" if clip_state == "ok" else None}
+
+    @staticmethod
+    def _companions(rel: str) -> list:
+        """Fichiers d'un passage : photo, fiche JSON, extrait vidéo."""
+        base = rel[:-4]
+        return [rel, base + ".json", base + ".mp4"]
 
     # ------------------------------------------------------------- écriture
-    def save_event(self, camera: str, frame, start: float, end: float, size: float) -> str:
+    def save_event(self, camera: str, frame, start: float, end: float, size: float,
+                   clip_expected: bool = False) -> str:
         """Enregistre la photo d'un passage (appelé par la détection)."""
         stamp = dt.datetime.fromtimestamp(start)
         folder = os.path.join(camera, stamp.strftime("%Y-%m-%d"))
@@ -124,11 +137,38 @@ class Storage(threading.Thread):
         cv2.imwrite(os.path.join(self.thumb_dir, eid + ".jpg"), thumb,
                     [cv2.IMWRITE_JPEG_QUALITY, 80])
 
-        self._sql("INSERT INTO events VALUES (?,?,?,?,?,?,?)",
-                  (eid, camera, start, end, size, rel, "pending"))
+        self._sql("INSERT INTO events VALUES (?,?,?,?,?,?,?,?)",
+                  (eid, camera, start, end, size, rel, "pending",
+                   "pending" if clip_expected else "none"))
         log.info("[%s] passage enregistré : %s", camera, rel)
         self._wake.set()
         return eid
+
+    def attach_clip(self, eid: str, data):
+        """Range l'extrait vidéo d'un passage (data = octets MP4, ou None si échec)."""
+        event = self.get_event(eid)
+        if event is None:                      # passage supprimé entre-temps
+            return
+        if data is None:
+            self._sql("UPDATE events SET clip_state='failed' WHERE id=?", (eid,))
+            log.warning("[%s] extrait vidéo indisponible pour %s", event["camera"], event["file"])
+            self._wake.set()
+            return
+        base = os.path.join(self.local_dir, event["file"][:-4])
+        with open(base + ".mp4.part", "wb") as fh:
+            fh.write(data)
+        os.replace(base + ".mp4.part", base + ".mp4")
+        try:
+            with open(base + ".json", encoding="utf-8") as fh:
+                meta = json.load(fh)
+            meta["video"] = os.path.basename(base) + ".mp4"
+            with open(base + ".json", "w", encoding="utf-8") as fh:
+                json.dump(meta, fh, indent=2, ensure_ascii=False)
+        except (OSError, ValueError):
+            pass
+        self._sql("UPDATE events SET clip_state='ok' WHERE id=?", (eid,))
+        log.info("[%s] extrait vidéo enregistré : %s.mp4", event["camera"], event["file"][:-4])
+        self._wake.set()
 
     # --------------------------------------------------------------- lecture
     def list_events(self, camera=None, before=None, limit=200) -> list:
@@ -150,19 +190,27 @@ class Storage(threading.Thread):
     def thumb_path(self, eid: str) -> str:
         return os.path.join(self.thumb_dir, eid + ".jpg")
 
-    def read_photo(self, event: dict) -> bytes:
+    def _read(self, event: dict, rel: str) -> bytes:
         if event["location"] == "pending":
-            with open(os.path.join(self.local_dir, event["file"]), "rb") as fh:
+            with open(os.path.join(self.local_dir, rel), "rb") as fh:
                 return fh.read()
 
         def read():
-            with open(os.path.join(self.nas_dir, event["file"]), "rb") as fh:
+            with open(os.path.join(self.nas_dir, rel), "rb") as fh:
                 return fh.read()
         return self._on_nas(read)
 
+    def read_photo(self, event: dict) -> bytes:
+        return self._read(event, event["file"])
+
+    def read_clip(self, event: dict) -> bytes:
+        if event["clip_state"] != "ok":
+            raise FileNotFoundError("pas d'extrait vidéo")
+        return self._read(event, event["clip"])
+
     def delete_event(self, event: dict):
         rel = event["file"]
-        targets = [rel, rel[:-4] + ".json"]
+        targets = self._companions(rel)
         if event["location"] == "pending":
             for t in targets:
                 _remove(os.path.join(self.local_dir, t))
@@ -196,7 +244,7 @@ class Storage(threading.Thread):
         return "ok", ""
 
     def _copy_one(self, rel: str):
-        for name in (rel, rel[:-4] + ".json"):
+        for name in self._companions(rel):
             src = os.path.join(self.local_dir, name)
             if not os.path.exists(src):
                 continue
@@ -208,12 +256,13 @@ class Storage(threading.Thread):
             os.replace(dst + ".part", dst)
 
     def _move_pending(self):
+        # Un passage attend que son extrait vidéo soit prêt avant d'être copié
         rows = self._sql("SELECT id, rel FROM events WHERE location='pending' "
-                         "ORDER BY start LIMIT 50", fetch=True)
+                         "AND clip_state!='pending' ORDER BY start LIMIT 50", fetch=True)
         for eid, rel in rows:
             self._on_nas(self._copy_one, rel, timeout=60)
             self._sql("UPDATE events SET location='nas' WHERE id=?", (eid,))
-            for name in (rel, rel[:-4] + ".json"):
+            for name in self._companions(rel):
                 _remove(os.path.join(self.local_dir, name))
             _prune_empty_dirs(self.local_dir, os.path.dirname(rel))
             with self._status_lock:

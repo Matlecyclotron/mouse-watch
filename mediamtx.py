@@ -54,10 +54,12 @@ class MediaMTX:
 class CameraManager(threading.Thread):
     """Synchronise les caméras avec MediaMTX et tient leur état à jour."""
 
-    def __init__(self, cameras: list, api: MediaMTX):
+    def __init__(self, cameras: list, api: MediaMTX, record_config=None):
         super().__init__(daemon=True, name="camera-manager")
         self.cameras = cameras
         self.api = api
+        # Fonction (id de caméra) -> réglages d'enregistrement MediaMTX (version 4)
+        self.record_config = record_config or (lambda cid: {"record": False})
         self.started = time.time()
         self._lock = threading.Lock()
         self._status = {c["id"]: self._blank(c) for c in cameras}
@@ -78,6 +80,10 @@ class CameraManager(threading.Thread):
             "rtspTransport": cam.get("rtsp_transport", "tcp"),
         }
 
+    def request_sync(self):
+        """Demande une synchronisation rapide (changement de réglages)."""
+        self._need_sync = True
+
     # ------------------------------------------------------------ synchro
     def sync(self):
         current = {p["name"]: p for p in
@@ -85,14 +91,21 @@ class CameraManager(threading.Thread):
         wanted_ids = set()
         for cam in self.cameras:
             sid, want = cam["id"], self.desired(cam)
+            record = self.record_config(sid)
             wanted_ids.add(sid)
             conf = current.get(sid)
             if conf is None:
-                self.api.call("POST", f"/v3/config/paths/add/{quote(sid)}", want)
+                self.api.call("POST", f"/v3/config/paths/add/{quote(sid)}", {**want, **record})
                 log.info("[%s] caméra déclarée : %s", sid, mask(cam["url"]))
             elif any(conf.get(k) != v for k, v in want.items()):
-                self.api.call("POST", f"/v3/config/paths/replace/{quote(sid)}", want)
+                # source modifiée : MediaMTX relance la connexion à la caméra
+                self.api.call("POST", f"/v3/config/paths/replace/{quote(sid)}", {**want, **record})
                 log.info("[%s] configuration mise à jour", sid)
+            elif any(conf.get(k) != v for k, v in record.items()):
+                # enregistrement seul : modifié sans couper le flux
+                self.api.call("PATCH", f"/v3/config/paths/patch/{quote(sid)}", record)
+                log.info("[%s] enregistrement continu %s", sid,
+                         "activé" if record.get("record") else "arrêté")
         for name in current:
             if name not in wanted_ids:
                 self.api.call("DELETE", f"/v3/config/paths/delete/{quote(name)}")

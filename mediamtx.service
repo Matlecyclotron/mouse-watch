@@ -8,6 +8,9 @@ Type=simple
 User=mediamtx
 Group=mediamtx
 ExecStart=/usr/local/bin/mediamtx /etc/mediamtx/mediamtx.yml
+# Tampon de l'enregistrement continu : /var/lib/mediamtx/recordings
+StateDirectory=mediamtx
+StateDirectoryMode=0755
 Restart=always
 RestartSec=3
 

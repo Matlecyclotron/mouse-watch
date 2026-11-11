@@ -9,6 +9,7 @@ avec détection de mouvement et photo de chaque passage.
   detection.py  analyse le flux de chaque caméra (OpenCV)
   storage.py    écrit les photos en local puis les copie sur le NAS
   settings.py   réglages modifiables depuis l'interface (settings.json)
+  recording.py  extraits vidéo des passages, tirés de l'enregistrement continu
 """
 import argparse
 import logging
@@ -26,10 +27,11 @@ from flask import (Flask, Response, abort, jsonify, redirect, render_template,  
 
 from detection import Detector  # noqa: E402
 from mediamtx import CameraManager, MediaMTX  # noqa: E402
+from recording import Recorder  # noqa: E402
 from settings import SettingsError, SettingsStore  # noqa: E402
 from storage import NasTimeout, Storage  # noqa: E402
 
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 log = logging.getLogger("rtsp-web")
 ID_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
@@ -42,6 +44,7 @@ def create_app(ctx: dict) -> Flask:
     cfg = ctx["cfg"]
     manager, settings, storage = ctx["manager"], ctx["settings"], ctx["storage"]
     detectors = ctx["detectors"]
+    recorder = ctx["recorder"]
     cameras = {c["id"]: c for c in cfg["cameras"]}
     mtx = cfg.get("mediamtx") or {}
     page = {
@@ -76,7 +79,13 @@ def create_app(ctx: dict) -> Flask:
             det = detectors.get(cam["id"])
             cam["detection"] = None
             if det:
-                cam["detection"] = {"mode": settings.get(cam["id"])["mode"], **det.status()}
+                s = settings.get(cam["id"])
+                cam["detection"] = {
+                    "mode": s["mode"], **det.status(),
+                    "video": s["video"],
+                    "recording": s["mode"] == "record" and s["video"],
+                    "buffer_mb": round(recorder.buffer_bytes(cam["id"]) / 1e6),
+                }
             result.append(cam)
         return result
 
@@ -112,7 +121,8 @@ def create_app(ctx: dict) -> Flask:
     # ------------------------------------------------------------------ API
     @app.get("/api/status")
     def api_status():
-        return jsonify({"cameras": full_status(), "storage": storage.status()})
+        return jsonify({"cameras": full_status(), "storage": storage.status(),
+                        "video": {"pending": recorder.pending(), "error": recorder.last_error}})
 
     @app.get("/api/cameras")
     def api_cameras():                 # compatibilité avec la version 2
@@ -190,6 +200,25 @@ def create_app(ctx: dict) -> Flask:
             headers["Content-Disposition"] = f'attachment; filename="{name}"'
         return Response(data, mimetype="image/jpeg", headers=headers)
 
+    @app.get("/api/events/<eid>/clip")
+    def api_clip(eid):
+        event = event_or_404(eid)
+        if event["clip_state"] != "ok":
+            abort(404)
+        try:
+            data = storage.read_clip(event)
+        except NasTimeout:
+            return Response("Le NAS ne répond pas.", status=504)
+        except OSError:
+            abort(404)
+        resp = Response(data, mimetype="video/mp4")
+        if request.args.get("download"):
+            name = event["camera"] + "_" + os.path.basename(event["clip"])
+            resp.headers["Content-Disposition"] = f'attachment; filename="{name}"'
+        resp.headers["Cache-Control"] = "max-age=86400"
+        # Lecture par morceaux (requêtes Range), indispensable à Safari
+        return resp.make_conditional(request, accept_ranges=True, complete_length=len(data))
+
     @app.delete("/api/events/<eid>")
     def api_delete(eid):
         event = event_or_404(eid)
@@ -255,12 +284,29 @@ def main():
     settings = SettingsStore(os.path.join(state_dir, "settings.json"), detect_ids,
                              cfg.get("detection_defaults"))
     rtsp_port = int(mtx.get("rtsp_port", 8554))
-    detectors = {cid: Detector(cid, f"rtsp://127.0.0.1:{rtsp_port}/{cid}", settings, storage)
+    video = cfg.get("video") or {}
+    recorder = Recorder(storage,
+                        playback_url=mtx.get("playback", "http://127.0.0.1:9996"),
+                        recordings_dir=video.get("recordings_dir", "/var/lib/mediamtx/recordings"),
+                        buffer_minutes=video.get("buffer_minutes", 30))
+    detectors = {cid: Detector(cid, f"rtsp://127.0.0.1:{rtsp_port}/{cid}", settings, storage,
+                               recorder)
                  for cid in detect_ids}
-    manager = CameraManager(cfg["cameras"], MediaMTX(mtx.get("api", "http://127.0.0.1:9997")))
+
+    def record_for(cid):
+        # Enregistrement continu seulement en position Enregistrement avec vidéo
+        if cid not in detectors:
+            return recorder.record_config(False)
+        s = settings.get(cid)
+        return recorder.record_config(s["mode"] == "record" and s["video"])
+
+    manager = CameraManager(cfg["cameras"], MediaMTX(mtx.get("api", "http://127.0.0.1:9997")),
+                            record_config=record_for)
+    settings.subscribe(lambda _cid: manager.request_sync())
 
     manager.start()
     storage.start()
+    recorder.start()
     for det in detectors.values():
         det.start()
 
@@ -276,7 +322,7 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
 
     ctx = {"cfg": cfg, "manager": manager, "settings": settings, "storage": storage,
-           "detectors": detectors,
+           "detectors": detectors, "recorder": recorder,
            "storage_info": {"nas_dir": storage.nas_dir, "config": os.path.abspath(args.config)}}
     app = create_app(ctx)
     server = cfg.get("server") or {}

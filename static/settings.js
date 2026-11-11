@@ -288,15 +288,24 @@
     sensitivity: v => `${v <= 3 ? "faible" : v <= 7 ? "moyenne" : "élevée"} (${v}/10)`,
     persistence: v => `${v} image${v > 1 ? "s" : ""}`,
     cooldown: v => `${v} s`,
+    pre_roll: v => `${v} s`,
+    post_roll: v => `${v} s`,
   };
   function showSettings(s) {
     document.querySelectorAll('input[name="mode"]').forEach(r => { r.checked = r.value === s.mode; });
+    $("#video").checked = s.video;
+    $("#pre_roll").disabled = $("#post_roll").disabled = !s.video;
     for (const key of Object.keys(FORMAT)) {
       $(`#${key}`).value = s[key];
       document.querySelector(`[data-out="${key}"]`).textContent = FORMAT[key](s[key]);
     }
   }
   document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener("change", () => save({ mode: r.value }, 0)));
+  $("#video").addEventListener("change", e => {
+    settings.video = e.target.checked;
+    $("#pre_roll").disabled = $("#post_roll").disabled = !settings.video;
+    save({ video: settings.video }, 0);
+  });
   document.querySelectorAll("input[data-key]").forEach(input => {
     const key = input.dataset.key;
     input.addEventListener("input", () => {
@@ -355,6 +364,11 @@
           settings.mode = det.mode;
           showSettings(settings);
         }
+        $("#vid-state").textContent =
+          !det.video ? "Extrait vidéo désactivé : seule la photo est enregistrée." :
+          det.recording ? `Enregistrement continu actif · tampon ${det.buffer_mb} Mo sur le serveur.` +
+                          (e.detail.video.error ? ` Problème : ${e.detail.video.error}` : "") :
+          "L'enregistrement continu démarre en position Enregistrement.";
         $("#det-state").textContent =
           det.mode === "off" ? "" :
           det.state === "running" ? `Analyse en cours (${RW.fmtNumber(det.fps)} images par seconde).` :

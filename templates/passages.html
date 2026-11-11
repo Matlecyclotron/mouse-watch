@@ -19,12 +19,18 @@
 </main>
 
 <dialog id="viewer" aria-labelledby="viewer-title">
+  <video id="viewer-video" controls playsinline muted hidden></video>
   <img id="viewer-img" alt="">
   <div class="dialog-bar">
     <strong id="viewer-title"></strong>
     <span class="muted" id="viewer-info"></span>
     <span class="spacer"></span>
-    <a class="btn" id="viewer-download" href="#">Télécharger</a>
+    <div class="seg" role="group" aria-label="Affichage" id="viewer-switch" hidden>
+      <button type="button" data-show="video" aria-pressed="true">Vidéo</button>
+      <button type="button" data-show="photo" aria-pressed="false">Photo</button>
+    </div>
+    <a class="btn" id="viewer-download" href="#">Télécharger la photo</a>
+    <a class="btn" id="viewer-download-clip" href="#" hidden>Télécharger la vidéo</a>
     <button type="button" class="btn danger" id="viewer-delete">Supprimer</button>
     <button type="button" class="btn" id="viewer-close">Fermer</button>
   </div>

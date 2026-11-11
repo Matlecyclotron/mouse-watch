@@ -1,14 +1,17 @@
 # mouse-watch
 
 Interface web de visionnage de caméras pour le réseau local, sous Debian,
-avec détection de mouvement et photo de chaque passage.
+avec détection de mouvement, photo et extrait vidéo de chaque passage.
+
+> Le dépôt s'appelle mouse-watch ; l'application s'installe sous son nom
+> technique, rtsp-web (service, dossiers et configuration).
 
 ```
 Raspberry Pi + caméra          Serveur Debian                                  Navigateurs
 (MediaMTX)          ──RTSP──►  MediaMTX (relais) ──WebRTC / HLS──────────────► Direct, Passages,
                                rtsp-web : détection (OpenCV), interface :8080   Réglages
                                    │
-                                   └── photos ──► disque local ──► NAS (autofs)
+                                   └── photos et extraits vidéo ──► disque local ──► NAS (autofs)
 ```
 
 ## Fonctions
@@ -16,20 +19,29 @@ Raspberry Pi + caméra          Serveur Debian                                  
 - **Direct** : mosaïque des caméras en quasi temps réel (WebRTC, repli HLS),
   zoom numérique, capture d'image, plein écran, et sélecteur de détection
   sur chaque vignette : *Arrêtée*, *Observation* ou *Enregistrement*.
-- **Passages** : photos classées par nuit, agrandissement, téléchargement,
-  suppression.
+- **Passages** : photos et extraits vidéo classés par nuit, lecture,
+  téléchargement, suppression.
 - **Réglages** (par caméra) : zones de détection tracées à main levée sur
   l'image en direct, zones d'exclusion, seuils, affichage du mouvement
   détecté, journal des dernières détections (retenues ou écartées, et
-  pourquoi), état du stockage.
+  pourquoi), extrait vidéo et ses marges avant et après, état du stockage.
 
 ## Installation ou mise à jour (Debian 12 ou 13)
 
 ```bash
-tar xzf rtsp-web.tar.gz && cd rtsp-web
+curl -L -o mouse-watch-4.0.0.tar.gz https://github.com/<votre-compte>/mouse-watch/archive/refs/tags/v4.0.0.tar.gz
+tar xzf mouse-watch-4.0.0.tar.gz && cd mouse-watch-4.0.0
 sudo ./install.sh
 sudo nano /etc/rtsp-web/config.yaml
 sudo systemctl restart rtsp-web
+```
+
+Le téléchargement direct suppose un dépôt public. Pour un dépôt privé,
+passez par Git sur le serveur, après `gh auth login` :
+
+```bash
+git clone https://github.com/<votre-compte>/mouse-watch.git
+cd mouse-watch && git checkout v4.0.0
 ```
 
 Ouvrez ensuite `http://<adresse-du-serveur>:8080/`.
@@ -38,7 +50,11 @@ Le script installe MediaMTX (version figée), Flask, Waitress et OpenCV
 depuis les dépôts Debian, crée deux utilisateurs système et deux services
 démarrés au boot : `mediamtx` et `rtsp-web`. Il conserve un
 `/etc/rtsp-web/config.yaml` existant et signale ce qui manque pour la
-version 3.
+version 4.
+
+**Depuis la version 3** : relancez `sudo ./install.sh`. Rien d'autre n'est
+obligatoire : l'extrait vidéo est activé par défaut, avec un tampon de
+30 minutes. La section `video` de `config.yaml` permet de changer cette durée.
 
 **Depuis la version 2** : relancez `sudo ./install.sh`, puis ajoutez à
 `/etc/rtsp-web/config.yaml` la section `storage`, `detection: true` sur la
@@ -52,7 +68,8 @@ Deux niveaux de réglages :
 - **`/etc/rtsp-web/config.yaml`**, édité à la main : caméras, ports, dossier
   du NAS, durée de conservation, valeurs de départ des seuils. Redémarrer le
   service après modification.
-- **L'interface (Réglages)** : position du sélecteur, zones, seuils. Pris en
+- **L'interface (Réglages)** : position du sélecteur, zones, seuils, extrait
+  vidéo et marges. Pris en
   compte immédiatement et conservés dans `/var/lib/rtsp-web/settings.json`
   (fichier géré par l'application).
 
@@ -63,6 +80,9 @@ storage:
   nas_dir: /mnt/nas/cameras              # vide : stockage local seul
   local_dir: /var/lib/rtsp-web/pending   # tampon si le NAS ne répond pas
   keep_days: 0                           # 0 = jamais d'effacement automatique
+
+video:
+  buffer_minutes: 30                     # tampon de l'enregistrement continu
 
 cameras:
   - id: terrier
@@ -104,6 +124,24 @@ identifiant numérique que sur le serveur, ou dossier ouvert en écriture).
 Évitez l'option `--ghost` d'autofs : elle fait apparaître le dossier même
 quand le partage n'est pas monté.
 
+## Extraits vidéo
+
+Chaque passage enregistré produit, en plus de la photo, un extrait MP4
+couvrant 2 secondes avant le début du passage et 2 secondes après sa fin
+(marges réglables de 0 à 10 secondes dans **Réglages**). L'extrait porte le
+nom de la photo (`02-14-37.mp4`) et la suit sur le NAS.
+
+Pour remonter avant le déclenchement, MediaMTX enregistre le flux en
+continu dans `/var/lib/mediamtx/recordings` et efface ce qui dépasse la
+durée du tampon (30 minutes par défaut). Cet enregistrement ne tourne que
+pour les caméras en position **Enregistrement** avec l'extrait vidéo coché.
+L'extrait est découpé sans réencodage, quelques secondes après la fin du
+passage ; il peut commencer un peu plus tôt que demandé, sur l'image clé
+précédente.
+
+Si l'extrait échoue, la photo est tout de même conservée, et le passage est
+marqué « vidéo indisponible ».
+
 ## Régler la détection
 
 1. Dans **Réglages**, tracez la zone autour de l'entrée du terrier, au ras
@@ -136,6 +174,9 @@ infrarouge, variation d'exposition) sont ignorés automatiquement.
 | 8888/tcp | HLS (repli) |
 | 8554/tcp | RTSP réémis par le serveur (facultatif : VLC, enregistreur) |
 
+Le service de relecture de MediaMTX (9996/tcp) n'écoute que sur le serveur
+lui-même : il n'y a pas à l'ouvrir.
+
 ## Exploitation
 
 ```bash
@@ -154,6 +195,9 @@ curl http://localhost:8080/healthz
   certains navigateurs.
 - **Charge** : la détection décode le flux complet de la caméra ; l'analyse
   elle-même, faite en 320 pixels de large, est légère.
+- **Disque du serveur** : le tampon vidéo occupe 1 à 2 Go par heure et par
+  caméra en 1080p, soit 0,5 à 1 Go avec le réglage par défaut. Chaque extrait
+  pèse 1 à 3 Mo sur le NAS.
 
 ## Organisation du code
 
@@ -164,6 +208,7 @@ curl http://localhost:8080/healthz
 | `detection.py` | détection de mouvement (OpenCV) |
 | `storage.py` | photos : écriture locale, copie vers le NAS, index SQLite |
 | `settings.py` | réglages de l'interface (`settings.json`) |
+| `recording.py` | extraits vidéo, tirés de l'enregistrement continu de MediaMTX |
 | `templates/`, `static/` | interface web |
 
 ## Développement
@@ -177,7 +222,7 @@ python3 app.py -c config.yaml -v
 
 ## Licence
 
-rtsp-web est un logiciel libre, distribué sous licence
+mouse-watch (nom technique : rtsp-web) est un logiciel libre, distribué sous licence
 [GNU GPL version 3 ou ultérieure](LICENSE) (GPL-3.0-or-later). Vous pouvez
 l'utiliser, l'étudier, le modifier et le redistribuer ; toute version
 modifiée redistribuée doit l'être sous la même licence, avec son code source.

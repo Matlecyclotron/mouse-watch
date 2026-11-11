@@ -71,6 +71,8 @@ else
     echo "    ATTENTION : pas de section « storage » : les photos resteront sur ce serveur. Modèle : $SRC/config.yaml"
   grep -q "detection: *true" "$ETC/config.yaml" || \
     echo "    ATTENTION : aucune caméra n'a « detection: true » : la détection n'apparaîtra pas dans l'interface."
+  grep -q "^video:" "$ETC/config.yaml" || \
+    echo "    Info : pas de section « video » : tampon vidéo de 30 minutes par défaut (modèle : $SRC/config.yaml)."
 fi
 
 NAS=$(python3 -c "import yaml;print(((yaml.safe_load(open('$ETC/config.yaml')) or {}).get('storage') or {}).get('nas_dir') or '')")
@@ -84,6 +86,11 @@ if [[ -n "$NAS" ]]; then
   else
     echo "    ATTENTION : $NAS introuvable pour l'instant (partage non monté ?). Les photos attendront sur ce serveur."
   fi
+fi
+
+FREE_GB=$(df -BG --output=avail /var/lib | tail -1 | tr -dc '0-9')
+if [[ -n "$FREE_GB" && "$FREE_GB" -lt 3 ]]; then
+  echo "    ATTENTION : seulement ${FREE_GB} Go libres sous /var/lib ; le tampon vidéo demande 1 à 2 Go par heure et par caméra."
 fi
 
 echo "==> Services"

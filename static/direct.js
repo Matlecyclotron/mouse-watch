@@ -50,7 +50,8 @@
       badge.hidden = false;
       badge.querySelector(".dot").className = `dot ${cls}`;
       badge.querySelector(".txt").textContent =
-        det.mode !== "off" && det.state === "error" ? `${label} · analyse indisponible` : label;
+        det.mode !== "off" && det.state === "error" ? `${label} · analyse indisponible`
+        : det.recording ? `${label} · vidéo` : label;
     }
 
     async setMode(mode, btn) {

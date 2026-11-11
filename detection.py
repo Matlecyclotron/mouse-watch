@@ -49,12 +49,13 @@ def var_threshold(sensitivity: int) -> float:
 
 class Detector(threading.Thread):
 
-    def __init__(self, camera_id: str, url: str, settings, storage):
+    def __init__(self, camera_id: str, url: str, settings, storage, recorder=None):
         super().__init__(daemon=True, name=f"detect-{camera_id}")
         self.cid = camera_id
         self.url = url
         self.settings = settings
         self.storage = storage
+        self.recorder = recorder
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -278,8 +279,13 @@ class Detector(threading.Thread):
             if start - self.last_event_end < cfg["cooldown"]:
                 result = "cooldown"
             elif cfg["mode"] == "record":
+                want_clip = self.recorder is not None and cfg.get("video", False)
                 try:
-                    self.storage.save_event(self.cid, ep["frame"], start, end, ep["best"])
+                    eid = self.storage.save_event(self.cid, ep["frame"], start, end,
+                                                  ep["best"], clip_expected=want_clip)
+                    if want_clip:
+                        self.recorder.request(eid, self.cid, start, end,
+                                              cfg["pre_roll"], cfg["post_roll"])
                     result = "saved"
                 except Exception:              # noqa: BLE001 — ne jamais arrêter la détection
                     log.exception("[%s] enregistrement impossible", self.cid)
