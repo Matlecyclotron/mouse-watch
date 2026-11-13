@@ -3,8 +3,9 @@
 *[Version française](README.fr.md)*
 
 Self-hosted wildlife camera trap for the local network, running on Debian:
-live view of RTSP cameras in the browser, motion detection, and a photo and
-video clip of each passage.
+live view of RTSP cameras in the browser, motion detection, a photo and
+video clip of each passage, and exportable activity data (times, sun, moon,
+weather).
 
 > The repository is named mouse-watch; the application installs under its
 > technical name, rtsp-web (service, folders and configuration).
@@ -27,7 +28,8 @@ Raspberry Pi + camera          Debian server                                   B
   detection selector on each tile: *Arrêtée* (off), *Observation*
   (detect only) or *Enregistrement* (recording).
 - **Passages**: photos and video clips grouped by night, with playback,
-  download and deletion.
+  download, deletion, tagging (mouse, other animal, false alarm) and export
+  of activity data for LibreOffice or as CSV.
 - **Settings** (*Réglages*, per camera): detection zones drawn freehand on
   the live image, exclusion zones, thresholds, live display of detected
   motion, log of recent detections (kept or discarded, and why), video clip
@@ -36,8 +38,8 @@ Raspberry Pi + camera          Debian server                                   B
 ## Installing or upgrading (Debian 12 or 13)
 
 ```bash
-curl -L -o mouse-watch-4.0.0.tar.gz https://github.com/<your-account>/mouse-watch/archive/refs/tags/v4.0.0.tar.gz
-tar xzf mouse-watch-4.0.0.tar.gz && cd mouse-watch-4.0.0
+curl -L -o mouse-watch-5.0.0.tar.gz https://github.com/<your-account>/mouse-watch/archive/refs/tags/v5.0.0.tar.gz
+tar xzf mouse-watch-5.0.0.tar.gz && cd mouse-watch-5.0.0
 sudo ./install.sh
 sudo nano /etc/rtsp-web/config.yaml
 sudo systemctl restart rtsp-web
@@ -48,7 +50,7 @@ Git on the server, after `gh auth login`:
 
 ```bash
 git clone https://github.com/<your-account>/mouse-watch.git
-cd mouse-watch && git checkout v4.0.0
+cd mouse-watch && git checkout v5.0.0
 ```
 
 Then open `http://<server-address>:8080/`.
@@ -56,7 +58,12 @@ Then open `http://<server-address>:8080/`.
 The script installs MediaMTX (pinned version), Flask, Waitress and OpenCV
 from the Debian repositories, creates two system users and two services
 started at boot: `mediamtx` and `rtsp-web`. It keeps an existing
-`/etc/rtsp-web/config.yaml` and reports anything missing for version 4.
+`/etc/rtsp-web/config.yaml` and reports anything missing for version 5.
+
+**From version 4**: run `sudo ./install.sh` again, then add the `site`
+section (latitude and longitude) to `/etc/rtsp-web/config.yaml` to get sun,
+moon and weather data. Existing passages are kept; observation durations
+are only known from version 5 onwards.
 
 **From version 3**: run `sudo ./install.sh` again. Nothing else is required:
 video clips are enabled by default, with a 30-minute buffer. The `video`
@@ -88,6 +95,13 @@ storage:
 
 video:
   buffer_minutes: 30                     # continuous recording buffer
+
+site:
+  latitude: 47.50                        # a hundredth of a degree is precise enough
+  longitude: -2.00
+
+weather:
+  enabled: true                          # hourly weather from Open-Meteo
 
 cameras:
   - id: terrier
@@ -145,6 +159,49 @@ start slightly earlier than requested, on the previous keyframe.
 
 If a clip fails, the photo is still kept, and the passage is marked "video
 unavailable".
+
+## Activity data
+
+The application collects what is needed to study activity over time: number
+of passages, their times, and their context.
+
+- **Observation periods**: the server records when each camera was actually
+  watching (*Enregistrement* position, analysis running). A night with no
+  passage can thus be told apart from a night with no monitoring, and
+  activity is expressed as passages per hour of observation.
+- **Tagging**: in **Passages**, each passage can be tagged *Souris* (mouse),
+  *Autre animal* (other animal) or *Fausse alerte* (false alarm). Keyboard:
+  1, 2, 3, and 0 to clear the tag; arrow keys to move to the next passage.
+  False alarms are excluded from the data. Deleting a photo keeps the
+  passage in the counts.
+- **Sun and moon**: computed on the server from the site coordinates (`site`
+  section of `config.yaml`). Each passage is placed in hours after sunset, a
+  measure unaffected by daylight saving time.
+- **Weather**: hourly temperature, rain, cloud cover, wind and humidity,
+  fetched from [Open-Meteo](https://open-meteo.com) (CC BY 4.0 data, from
+  weather models). The server needs Internet access; only the coordinates,
+  rounded to a hundredth of a degree (about 1 km), are sent.
+- **Settings history**: changes to zones and thresholds are dated, since
+  they change what gets detected.
+
+The **Télécharger les données** (download data) button on the Passages page
+lets you choose the period, camera, passages to keep and format:
+
+- **LibreOffice spreadsheet (.ods)**: a workbook with three sheets,
+  *Passages* (one row per passage), *Nuits* (one row per night, including
+  nights with no passage) and *Notice* (meaning of each column);
+- **CSV (.zip)**: the same tables as text files.
+
+Every morning, the full data set is also copied as CSV to the
+`statistiques/` folder on the NAS. For scripts, a direct address is
+available:
+`http://<server>:8080/api/export.csv?table=passages&depuis=2026-11-01`
+(`table=nuits` for the other table; `jusqu` (until), `camera` and
+`retenus=souris` are also accepted). Column names and values are in French;
+the *Notice* sheet and `LISEZMOI.txt` describe them.
+
+A passage measures activity, not a number of animals: the same animal may
+pass several times, and entering cannot be told apart from leaving.
 
 ## Tuning detection
 
@@ -213,6 +270,9 @@ curl http://localhost:8080/healthz
 | `storage.py` | photos: local write, copy to the NAS, SQLite index |
 | `settings.py` | interface settings (`settings.json`) |
 | `recording.py` | video clips, cut from MediaMTX continuous recording |
+| `stats.py` | observation periods, weather, activity data tables |
+| `astro.py` | sun and moon, computed locally |
+| `export.py` | ODS (LibreOffice) and CSV export |
 | `templates/`, `static/` | web interface |
 
 ## Development

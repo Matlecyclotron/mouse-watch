@@ -12,6 +12,17 @@
         {% for c in cameras %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
       </select>
     </label>
+    <label class="row" style="gap:.5rem;align-items:center">
+      <span class="muted">Marquage</span>
+      <select id="tag-filter" class="btn">
+        <option value="">Tous</option>
+        <option value="mouse">Souris</option>
+        <option value="other">Autres animaux</option>
+        <option value="false">Fausses alertes</option>
+        <option value="none">Non marqués</option>
+      </select>
+    </label>
+    <button type="button" class="btn" id="export-open">Télécharger les données</button>
   </div>
   <div id="nights" class="stack"></div>
   <p class="empty" id="empty" hidden>Aucun passage enregistré pour le moment. Les photos apparaissent ici quand une caméra est en position « Enregistrement ».</p>
@@ -21,6 +32,18 @@
 <dialog id="viewer" aria-labelledby="viewer-title">
   <video id="viewer-video" controls playsinline muted hidden></video>
   <img id="viewer-img" alt="">
+  <div class="dialog-bar" style="padding-bottom:0">
+    <span class="muted small">Ce passage :</span>
+    <div class="seg" role="group" aria-label="Marquage du passage" id="viewer-tags">
+      <button type="button" data-tag="mouse" aria-pressed="false">Souris</button>
+      <button type="button" data-tag="other" aria-pressed="false">Autre animal</button>
+      <button type="button" data-tag="false" aria-pressed="false">Fausse alerte</button>
+      <button type="button" data-tag="" aria-pressed="false">Non marqué</button>
+    </div>
+    <span class="spacer"></span>
+    <button type="button" class="btn" id="viewer-prev" aria-label="Passage plus récent">‹ Plus récent</button>
+    <button type="button" class="btn" id="viewer-next" aria-label="Passage plus ancien">Plus ancien ›</button>
+  </div>
   <div class="dialog-bar">
     <strong id="viewer-title"></strong>
     <span class="muted" id="viewer-info"></span>
@@ -33,6 +56,47 @@
     <a class="btn" id="viewer-download-clip" href="#" hidden>Télécharger la vidéo</a>
     <button type="button" class="btn danger" id="viewer-delete">Supprimer</button>
     <button type="button" class="btn" id="viewer-close">Fermer</button>
+  </div>
+</dialog>
+
+<dialog id="export-dialog" aria-labelledby="export-title" style="width:min(560px,96vw)">
+  <div class="card-pad stack" style="gap:.9rem">
+    <h2 id="export-title">Télécharger les données</h2>
+    <p class="muted small" style="margin:0">Deux tableaux prêts à l'emploi : une ligne par passage avec son contexte (soleil, lune, météo), et une ligne par nuit avec la durée d'observation.</p>
+    <label class="field"><span>Période</span>
+      <select id="ex-period" class="btn">
+        <option value="7">7 dernières nuits</option>
+        <option value="30" selected>30 dernières nuits</option>
+        <option value="all">Tout</option>
+        <option value="custom">Dates au choix</option>
+      </select>
+    </label>
+    <div class="row" id="ex-dates" hidden>
+      <label class="field"><span>Nuit du</span><input type="date" id="ex-from" class="btn"></label>
+      <label class="field"><span>à la nuit du</span><input type="date" id="ex-to" class="btn"></label>
+    </div>
+    <label class="field"><span>Caméra</span>
+      <select id="ex-camera" class="btn">
+        <option value="">Toutes</option>
+        {% for c in cameras %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="field"><span>Passages retenus</span>
+      <select id="ex-keep" class="btn">
+        <option value="tous">Tous, sauf les fausses alertes</option>
+        <option value="souris">Seulement ceux marqués « souris »</option>
+      </select>
+    </label>
+    <fieldset class="modes" style="gap:.4rem">
+      <legend style="padding-bottom:.3rem">Format</legend>
+      <label class="row" style="align-items:center;gap:.5rem"><input type="radio" name="ex-format" value="ods" checked> Tableur LibreOffice (.ods) : feuilles Passages, Nuits et Notice</label>
+      <label class="row" style="align-items:center;gap:.5rem"><input type="radio" name="ex-format" value="csv"> CSV (.zip) : pour les scripts et l'archivage</label>
+    </fieldset>
+    <p class="muted small" style="margin:0" id="ex-status"></p>
+    <div class="row" style="align-items:center">
+      <a class="btn" id="ex-download" href="/api/export">Télécharger</a>
+      <button type="button" class="btn" id="ex-close">Fermer</button>
+    </div>
   </div>
 </dialog>
 {% endblock %}

@@ -26,6 +26,7 @@ log = logging.getLogger("rtsp-web.storage")
 PROBE_INTERVAL = 10       # secondes entre deux vérifications du NAS
 NAS_TIMEOUT = 15          # délai maximal d'une opération sur le NAS
 THUMB_WIDTH = 480
+TAGS = ("", "mouse", "other", "false")   # non marqué, souris, autre animal, fausse alerte
 
 
 class NasTimeout(Exception):
@@ -53,6 +54,9 @@ class Storage(threading.Thread):
         columns = {r[1] for r in self._db.execute("PRAGMA table_info(events)")}
         if "clip_state" not in columns:          # mise à jour depuis la version 3
             self._db.execute("ALTER TABLE events ADD COLUMN clip_state TEXT NOT NULL DEFAULT 'none'")
+        if "tag" not in columns:                 # mise à jour depuis la version 4
+            self._db.execute("ALTER TABLE events ADD COLUMN tag TEXT NOT NULL DEFAULT ''")
+            self._db.execute("ALTER TABLE events ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0")
         # Extraits en cours de préparation lors d'un arrêt : perdus, la photo reste
         self._db.execute("UPDATE events SET clip_state='failed' WHERE clip_state='pending'")
         self._db.commit()
@@ -87,11 +91,12 @@ class Storage(threading.Thread):
 
     @staticmethod
     def _row(row) -> dict:
-        eid, camera, start, end, size, rel, location, clip_state = row
+        eid, camera, start, end, size, rel, location, clip_state, tag, deleted = row
         return {"id": eid, "camera": camera, "start": start, "end": end,
                 "duration": round(end - start, 1), "size": round(size, 1),
                 "file": rel, "location": location, "clip_state": clip_state,
-                "clip": rel[:-4] + ".mp4" if clip_state == "ok" else None}
+                "clip": rel[:-4] + ".mp4" if clip_state == "ok" and not deleted else None,
+                "tag": tag, "deleted": bool(deleted)}
 
     @staticmethod
     def _companions(rel: str) -> list:
@@ -137,7 +142,8 @@ class Storage(threading.Thread):
         cv2.imwrite(os.path.join(self.thumb_dir, eid + ".jpg"), thumb,
                     [cv2.IMWRITE_JPEG_QUALITY, 80])
 
-        self._sql("INSERT INTO events VALUES (?,?,?,?,?,?,?,?)",
+        self._sql("INSERT INTO events (id, camera, start, end, size, rel, location, clip_state) "
+                  "VALUES (?,?,?,?,?,?,?,?)",
                   (eid, camera, start, end, size, rel, "pending",
                    "pending" if clip_expected else "none"))
         log.info("[%s] passage enregistré : %s", camera, rel)
@@ -147,7 +153,7 @@ class Storage(threading.Thread):
     def attach_clip(self, eid: str, data):
         """Range l'extrait vidéo d'un passage (data = octets MP4, ou None si échec)."""
         event = self.get_event(eid)
-        if event is None:                      # passage supprimé entre-temps
+        if event is None or event["deleted"]:  # passage supprimé entre-temps
             return
         if data is None:
             self._sql("UPDATE events SET clip_state='failed' WHERE id=?", (eid,))
@@ -171,17 +177,36 @@ class Storage(threading.Thread):
         self._wake.set()
 
     # --------------------------------------------------------------- lecture
-    def list_events(self, camera=None, before=None, limit=200) -> list:
+    def list_events(self, camera=None, before=None, limit=200, tag=None,
+                    since=None, include_deleted=False) -> list:
+        """Passages, du plus récent au plus ancien.
+
+        tag : None (tous), "" (non marqués), "mouse", "other" ou "false".
+        Les passages supprimés restent dans l'index pour les statistiques ;
+        ils ne sont renvoyés que si include_deleted est vrai."""
         query, args = "SELECT * FROM events WHERE 1=1", []
+        if not include_deleted:
+            query += " AND deleted=0"
         if camera:
             query += " AND camera=?"
             args.append(camera)
+        if tag is not None:
+            query += " AND tag=?"
+            args.append(tag)
+        if since:
+            query += " AND start>=?"
+            args.append(float(since))
         if before:
             query += " AND start<?"
             args.append(float(before))
         query += " ORDER BY start DESC LIMIT ?"
-        args.append(max(1, min(int(limit), 1000)))
+        args.append(max(1, min(int(limit), 100000)))
         return [self._row(r) for r in self._sql(query, args, fetch=True)]
+
+    def set_tag(self, eid: str, tag: str):
+        if tag not in TAGS:
+            raise ValueError("marquage inconnu")
+        self._sql("UPDATE events SET tag=? WHERE id=?", (tag, eid))
 
     def get_event(self, eid: str):
         rows = self._sql("SELECT * FROM events WHERE id=?", (eid,), fetch=True)
@@ -217,14 +242,30 @@ class Storage(threading.Thread):
         else:
             self._on_nas(lambda: [_remove(os.path.join(self.nas_dir, t)) for t in targets])
         _remove(self.thumb_path(event["id"]))
-        self._sql("DELETE FROM events WHERE id=?", (event["id"],))
-        log.info("[%s] passage supprimé : %s", event["camera"], rel)
+        # La ligne reste dans l'index, marquée supprimée : les statistiques
+        # continuent de compter ce passage (sauf s'il est marqué fausse alerte).
+        self._sql("UPDATE events SET deleted=1, clip_state='none' WHERE id=?", (event["id"],))
+        log.info("[%s] photo et vidéo supprimées : %s", event["camera"], rel)
+
+    def write_nas_files(self, files: dict):
+        """Écrit des fichiers (chemin relatif -> octets) sur le NAS, sans bloquer."""
+        if not self.nas_dir:
+            raise OSError("NAS non configuré")
+
+        def write():
+            for rel, data in files.items():
+                dst = os.path.join(self.nas_dir, rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with open(dst + ".part", "wb") as fh:
+                    fh.write(data)
+                os.replace(dst + ".part", dst)
+        self._on_nas(write, timeout=60)
 
     def status(self) -> dict:
         with self._status_lock:
             st = dict(self._status)
         st["nas_dir"] = self.nas_dir
-        st["pending"] = self._sql("SELECT COUNT(*) FROM events WHERE location='pending'",
+        st["pending"] = self._sql("SELECT COUNT(*) FROM events WHERE location='pending' AND deleted=0",
                                   fetch=True)[0][0]
         return st
 
@@ -257,7 +298,7 @@ class Storage(threading.Thread):
 
     def _move_pending(self):
         # Un passage attend que son extrait vidéo soit prêt avant d'être copié
-        rows = self._sql("SELECT id, rel FROM events WHERE location='pending' "
+        rows = self._sql("SELECT id, rel FROM events WHERE location='pending' AND deleted=0 "
                          "AND clip_state!='pending' ORDER BY start LIMIT 50", fetch=True)
         for eid, rel in rows:
             self._on_nas(self._copy_one, rel, timeout=60)
@@ -272,7 +313,7 @@ class Storage(threading.Thread):
         if self.keep_days <= 0:
             return
         limit = time.time() - self.keep_days * 86400
-        old = self._sql("SELECT * FROM events WHERE start<?", (limit,), fetch=True)
+        old = self._sql("SELECT * FROM events WHERE start<? AND deleted=0", (limit,), fetch=True)
         for row in old:
             event = self._row(row)
             try:

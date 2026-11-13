@@ -71,6 +71,8 @@ else
     echo "    ATTENTION : pas de section « storage » : les photos resteront sur ce serveur. Modèle : $SRC/config.yaml"
   grep -q "detection: *true" "$ETC/config.yaml" || \
     echo "    ATTENTION : aucune caméra n'a « detection: true » : la détection n'apparaîtra pas dans l'interface."
+  grep -q "^site:" "$ETC/config.yaml" || \
+    echo "    Info : pas de section « site » (latitude, longitude) : les données de soleil, de lune et de météo ne seront pas calculées (modèle : $SRC/config.yaml)."
   grep -q "^video:" "$ETC/config.yaml" || \
     echo "    Info : pas de section « video » : tampon vidéo de 30 minutes par défaut (modèle : $SRC/config.yaml)."
 fi

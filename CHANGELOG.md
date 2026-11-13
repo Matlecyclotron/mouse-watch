@@ -1,5 +1,21 @@
 # Historique des versions
 
+## 5.0.0 — 2026-11-13
+
+- Collecte des données d'activité : périodes d'observation de chaque caméra
+  (position Enregistrement, analyse active) et historique daté des réglages.
+- Marquage des passages (souris, autre animal, fausse alerte) dans la page
+  Passages, avec filtre, navigation et raccourcis clavier. Supprimer une
+  photo conserve désormais le passage dans l'index, pour les statistiques.
+- Soleil et lune calculés localement (nouveau module `astro.py`, sans
+  dépendance) : coucher, lever, crépuscules, éclairement et hauteur de la lune.
+- Météo horaire récupérée auprès d'Open-Meteo (coordonnées arrondies à
+  environ 1 km), conservée localement.
+- Export des données : classeur LibreOffice (.ods) à trois feuilles
+  (Passages, Nuits, Notice) ou CSV ; copie quotidienne en CSV dans le dossier
+  `statistiques/` du NAS ; adresse directe `/api/export.csv`.
+- Configuration : sections `site` (latitude, longitude) et `weather`.
+
 ## 4.0.1 — 2026-11-11
 
 - Correction : après un changement brusque de luminosité, la détection

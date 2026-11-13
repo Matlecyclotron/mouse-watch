@@ -10,8 +10,12 @@ avec détection de mouvement et photo de chaque passage.
   storage.py    écrit les photos en local puis les copie sur le NAS
   settings.py   réglages modifiables depuis l'interface (settings.json)
   recording.py  extraits vidéo des passages, tirés de l'enregistrement continu
+  stats.py      périodes d'observation, météo, tableaux de données d'activité
+  astro.py      soleil et lune, calculés localement
+  export.py     export des données en ODS (LibreOffice) et CSV
 """
 import argparse
+import datetime as dt
 import logging
 import os
 import re
@@ -28,10 +32,12 @@ from flask import (Flask, Response, abort, jsonify, redirect, render_template,  
 from detection import Detector  # noqa: E402
 from mediamtx import CameraManager, MediaMTX  # noqa: E402
 from recording import Recorder  # noqa: E402
+import export  # noqa: E402
+from stats import Stats  # noqa: E402
 from settings import SettingsError, SettingsStore  # noqa: E402
 from storage import NasTimeout, Storage  # noqa: E402
 
-__version__ = "4.0.1"
+__version__ = "5.0.0"
 
 log = logging.getLogger("rtsp-web")
 ID_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
@@ -45,6 +51,7 @@ def create_app(ctx: dict) -> Flask:
     manager, settings, storage = ctx["manager"], ctx["settings"], ctx["storage"]
     detectors = ctx["detectors"]
     recorder = ctx["recorder"]
+    stats = ctx["stats"]
     cameras = {c["id"]: c for c in cfg["cameras"]}
     mtx = cfg.get("mediamtx") or {}
     page = {
@@ -122,7 +129,8 @@ def create_app(ctx: dict) -> Flask:
     @app.get("/api/status")
     def api_status():
         return jsonify({"cameras": full_status(), "storage": storage.status(),
-                        "video": {"pending": recorder.pending(), "error": recorder.last_error}})
+                        "video": {"pending": recorder.pending(), "error": recorder.last_error},
+                        "stats": stats.status()})
 
     @app.get("/api/cameras")
     def api_cameras():                 # compatibilité avec la version 2
@@ -159,9 +167,15 @@ def create_app(ctx: dict) -> Flask:
         camera = request.args.get("camera") or None
         if camera:
             camera_or_404(camera)
+        tag = request.args.get("tag")
+        if tag == "none":
+            tag = ""                              # passages non marqués
+        elif tag not in (None, "mouse", "other", "false"):
+            abort(400)
         try:
             events = storage.list_events(camera=camera, before=request.args.get("before"),
-                                         limit=request.args.get("limit", 200))
+                                         limit=min(int(request.args.get("limit", 200)), 1000),
+                                         tag=tag)
         except ValueError:
             abort(400)
         names = {c["id"]: c.get("name", c["id"]) for c in cfg["cameras"]}
@@ -173,9 +187,60 @@ def create_app(ctx: dict) -> Flask:
         if not EVENT_RE.match(eid):
             abort(404)
         event = storage.get_event(eid)
-        if event is None:
+        if event is None or event["deleted"]:
             abort(404)
         return event
+
+    @app.put("/api/events/<eid>/tag")
+    def api_tag(eid):
+        event_or_404(eid)
+        tag = (request.get_json(force=True, silent=True) or {}).get("tag")
+        try:
+            storage.set_tag(eid, tag)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        return jsonify({"ok": True, "tag": tag})
+
+    # ------------------------------------------------------ export des données
+    def export_filters():
+        """Filtres communs aux exports : nuits « depuis » et « jusqu » (dates du
+        soir, incluses), caméra, passages retenus (« souris » ou « tous »)."""
+        def noon(name, extra_days=0):
+            value = request.args.get(name)
+            if not value:
+                return None
+            try:
+                day = dt.date.fromisoformat(value) + dt.timedelta(days=extra_days)
+            except ValueError:
+                abort(400, f"date invalide pour « {name} » (attendu : AAAA-MM-JJ)")
+            return dt.datetime(day.year, day.month, day.day, 12).timestamp()
+        camera = request.args.get("camera") or None
+        if camera:
+            camera_or_404(camera)
+        return {"since": noon("depuis"), "until": noon("jusqu", 1), "camera": camera,
+                "confirmed": request.args.get("retenus", "tous") == "souris"}
+
+    @app.get("/api/export")
+    def api_export():
+        filters = export_filters()
+        stamp = dt.date.today().isoformat()
+        if request.args.get("format", "ods") == "csv":
+            data, mime, name = (export.csv_zip(stats, **filters), "application/zip",
+                                f"mouse-watch_donnees_{stamp}.zip")
+        else:
+            data, mime, name = (export.ods_bytes(stats, **filters),
+                                "application/vnd.oasis.opendocument.spreadsheet",
+                                f"mouse-watch_donnees_{stamp}.ods")
+        return Response(data, mimetype=mime, headers={
+            "Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+
+    @app.get("/api/export.csv")
+    def api_export_csv():
+        """Accès direct pour les scripts : ?table=passages|nuits&depuis=AAAA-MM-JJ…"""
+        filters = export_filters()
+        name = "nuits.csv" if request.args.get("table") == "nuits" else "passages.csv"
+        return Response(export.csv_files(stats, **filters)[name],
+                        mimetype="text/csv; charset=utf-8", headers={"Cache-Control": "no-store"})
 
     @app.get("/api/events/<eid>/thumb")
     def api_thumb(eid):
@@ -307,6 +372,10 @@ def main():
     manager.start()
     storage.start()
     recorder.start()
+    stats = Stats(storage, settings, detectors,
+                  {c["id"]: c.get("name", c["id"]) for c in cfg["cameras"]},
+                  site=cfg.get("site"), weather=cfg.get("weather"))
+    stats.start()
     for det in detectors.values():
         det.start()
 
@@ -322,7 +391,7 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
 
     ctx = {"cfg": cfg, "manager": manager, "settings": settings, "storage": storage,
-           "detectors": detectors, "recorder": recorder,
+           "detectors": detectors, "recorder": recorder, "stats": stats,
            "storage_info": {"nas_dir": storage.nas_dir, "config": os.path.abspath(args.config)}}
     app = create_app(ctx)
     server = cfg.get("server") or {}

@@ -3,7 +3,8 @@
 *[English version](README.md)*
 
 Interface web de visionnage de caméras pour le réseau local, sous Debian,
-avec détection de mouvement, photo et extrait vidéo de chaque passage.
+avec détection de mouvement, photo et extrait vidéo de chaque passage, et
+données d'activité exportables (horaires, soleil, lune, météo).
 
 > Le dépôt s'appelle mouse-watch ; l'application s'installe sous son nom
 > technique, rtsp-web (service, dossiers et configuration).
@@ -22,7 +23,8 @@ Raspberry Pi + caméra          Serveur Debian                                  
   zoom numérique, capture d'image, plein écran, et sélecteur de détection
   sur chaque vignette : *Arrêtée*, *Observation* ou *Enregistrement*.
 - **Passages** : photos et extraits vidéo classés par nuit, lecture,
-  téléchargement, suppression.
+  téléchargement, suppression, marquage (souris, autre animal, fausse
+  alerte) et export des données d'activité pour LibreOffice ou en CSV.
 - **Réglages** (par caméra) : zones de détection tracées à main levée sur
   l'image en direct, zones d'exclusion, seuils, affichage du mouvement
   détecté, journal des dernières détections (retenues ou écartées, et
@@ -31,8 +33,8 @@ Raspberry Pi + caméra          Serveur Debian                                  
 ## Installation ou mise à jour (Debian 12 ou 13)
 
 ```bash
-curl -L -o mouse-watch-4.0.0.tar.gz https://github.com/<votre-compte>/mouse-watch/archive/refs/tags/v4.0.0.tar.gz
-tar xzf mouse-watch-4.0.0.tar.gz && cd mouse-watch-4.0.0
+curl -L -o mouse-watch-5.0.0.tar.gz https://github.com/<votre-compte>/mouse-watch/archive/refs/tags/v5.0.0.tar.gz
+tar xzf mouse-watch-5.0.0.tar.gz && cd mouse-watch-5.0.0
 sudo ./install.sh
 sudo nano /etc/rtsp-web/config.yaml
 sudo systemctl restart rtsp-web
@@ -43,7 +45,7 @@ passez par Git sur le serveur, après `gh auth login` :
 
 ```bash
 git clone https://github.com/<votre-compte>/mouse-watch.git
-cd mouse-watch && git checkout v4.0.0
+cd mouse-watch && git checkout v5.0.0
 ```
 
 Ouvrez ensuite `http://<adresse-du-serveur>:8080/`.
@@ -52,7 +54,13 @@ Le script installe MediaMTX (version figée), Flask, Waitress et OpenCV
 depuis les dépôts Debian, crée deux utilisateurs système et deux services
 démarrés au boot : `mediamtx` et `rtsp-web`. Il conserve un
 `/etc/rtsp-web/config.yaml` existant et signale ce qui manque pour la
-version 4.
+version 5.
+
+**Depuis la version 4** : relancez `sudo ./install.sh`, puis ajoutez à
+`/etc/rtsp-web/config.yaml` la section `site` (latitude et longitude) pour
+obtenir les données de soleil, de lune et de météo. Vos passages existants
+sont repris ; les durées d'observation ne sont connues qu'à partir de la
+version 5.
 
 **Depuis la version 3** : relancez `sudo ./install.sh`. Rien d'autre n'est
 obligatoire : l'extrait vidéo est activé par défaut, avec un tampon de
@@ -85,6 +93,13 @@ storage:
 
 video:
   buffer_minutes: 30                     # tampon de l'enregistrement continu
+
+site:
+  latitude: 47.50                        # au centième de degré : inutile d'être plus précis
+  longitude: -2.00
+
+weather:
+  enabled: true                          # météo horaire depuis Open-Meteo
 
 cameras:
   - id: terrier
@@ -143,6 +158,48 @@ précédente.
 
 Si l'extrait échoue, la photo est tout de même conservée, et le passage est
 marqué « vidéo indisponible ».
+
+## Données d'activité
+
+L'application collecte ce qu'il faut pour étudier l'activité dans le temps :
+nombre de passages, horaires, et leur contexte.
+
+- **Périodes d'observation** : le serveur note quand chaque caméra
+  surveillait réellement (position *Enregistrement*, analyse active). Une
+  nuit sans passage se distingue ainsi d'une nuit sans surveillance, et
+  l'activité s'exprime en passages par heure d'observation.
+- **Marquage** : dans **Passages**, chaque passage peut être marqué *Souris*,
+  *Autre animal* ou *Fausse alerte* (au clavier : 1, 2, 3, et 0 pour retirer
+  le marquage ; flèches pour passer au suivant). Les fausses alertes sont
+  exclues des données. Supprimer une photo conserve le passage dans les
+  comptes.
+- **Soleil et lune** : calculés sur le serveur à partir des coordonnées du
+  site (section `site` de `config.yaml`). Chaque passage est situé en heures
+  après le coucher du soleil, mesure insensible au changement d'heure.
+- **Météo** : température, pluie, nuages, vent et humidité, heure par heure,
+  récupérés auprès d'[Open-Meteo](https://open-meteo.com) (données CC BY 4.0,
+  issues de modèles météorologiques). Le serveur doit avoir accès à
+  Internet ; seules les coordonnées, arrondies au centième de degré
+  (environ 1 km), sont transmises.
+- **Historique des réglages** : les changements de zone et de seuils sont
+  datés, car ils modifient ce qui est détecté.
+
+Le bouton **Télécharger les données**, dans la page Passages, propose la
+période, la caméra, les passages retenus et le format :
+
+- **Tableur LibreOffice (.ods)** : un classeur à trois feuilles, *Passages*
+  (une ligne par passage), *Nuits* (une ligne par nuit, y compris sans
+  passage) et *Notice* (signification de chaque colonne) ;
+- **CSV (.zip)** : les mêmes tableaux en fichiers texte.
+
+Chaque matin, les données complètes sont aussi copiées en CSV dans le
+dossier `statistiques/` du NAS. Pour un script, une adresse directe existe :
+`http://<serveur>:8080/api/export.csv?table=passages&depuis=2026-11-01`
+(`table=nuits` pour l'autre tableau ; `jusqu`, `camera` et `retenus=souris`
+sont aussi acceptés).
+
+Un passage mesure une activité, pas un nombre d'animaux : le même animal
+peut passer plusieurs fois, et l'entrée ne se distingue pas de la sortie.
 
 ## Régler la détection
 
@@ -211,6 +268,9 @@ curl http://localhost:8080/healthz
 | `storage.py` | photos : écriture locale, copie vers le NAS, index SQLite |
 | `settings.py` | réglages de l'interface (`settings.json`) |
 | `recording.py` | extraits vidéo, tirés de l'enregistrement continu de MediaMTX |
+| `stats.py` | périodes d'observation, météo, tableaux de données d'activité |
+| `astro.py` | soleil et lune, calculés localement |
+| `export.py` | export ODS (LibreOffice) et CSV |
 | `templates/`, `static/` | interface web |
 
 ## Développement
