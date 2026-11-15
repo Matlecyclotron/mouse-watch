@@ -22,7 +22,10 @@ Raspberry Pi + caméra          Serveur Debian                                  
   zoom numérique, capture d'image, plein écran, et sélecteur de détection
   sur chaque vignette : *Arrêtée*, *Observation* ou *Enregistrement*.
 - **Passages** : photos et extraits vidéo classés par nuit, lecture,
-  téléchargement, suppression.
+  téléchargement, suppression. Le bouton **Sélectionner** permet de cocher
+  plusieurs passages (une nuit entière, ou une plage avec Maj + clic) pour
+  les télécharger en une archive ZIP ou les supprimer d'un coup, jusqu'à 500
+  à la fois.
 - **Réglages** (par caméra) : zones de détection tracées à main levée sur
   l'image en direct, zones d'exclusion, seuils, affichage du mouvement
   détecté, journal des dernières détections (retenues ou écartées, et
@@ -31,8 +34,8 @@ Raspberry Pi + caméra          Serveur Debian                                  
 ## Installation ou mise à jour (Debian 12 ou 13)
 
 ```bash
-curl -L -o mouse-watch-4.0.0.tar.gz https://github.com/<votre-compte>/mouse-watch/archive/refs/tags/v4.0.0.tar.gz
-tar xzf mouse-watch-4.0.0.tar.gz && cd mouse-watch-4.0.0
+curl -L -o mouse-watch-4.1.0.tar.gz https://github.com/<votre-compte>/mouse-watch/archive/refs/tags/v4.1.0.tar.gz
+tar xzf mouse-watch-4.1.0.tar.gz && cd mouse-watch-4.1.0
 sudo ./install.sh
 sudo nano /etc/rtsp-web/config.yaml
 sudo systemctl restart rtsp-web
@@ -43,7 +46,7 @@ passez par Git sur le serveur, après `gh auth login` :
 
 ```bash
 git clone https://github.com/<votre-compte>/mouse-watch.git
-cd mouse-watch && git checkout v4.0.0
+cd mouse-watch && git checkout v4.1.0
 ```
 
 Ouvrez ensuite `http://<adresse-du-serveur>:8080/`.

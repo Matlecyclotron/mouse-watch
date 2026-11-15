@@ -133,6 +133,25 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .thumb button { padding: 0; border: 0; background: none; cursor: pointer; border-radius: 6px; display: block; }
 .thumb img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; border-radius: 6px; background: var(--screen); outline: 1px solid var(--line); }
 .thumb figcaption { display: flex; justify-content: space-between; gap: .5rem; font-size: .88rem; font-variant-numeric: tabular-nums; }
+/* Sélection de passages */
+.thumb .check {
+  position: absolute; left: .4rem; top: .4rem; width: 1.6rem; height: 1.6rem; border-radius: 5px;
+  display: none; place-items: center; background: rgba(0, 0, 0, .55); border: 2px solid var(--on-screen);
+  color: var(--on-screen); font-size: 1rem; font-weight: 700; line-height: 1; pointer-events: none;
+}
+.selecting .thumb .check { display: grid; }
+.thumb.selected .check { background: var(--accent); border-color: var(--accent); }
+.thumb.selected img { outline: 3px solid var(--accent); outline-offset: -1px; }
+.night-check { display: none; align-items: center; gap: .4rem; font-size: .88rem; color: var(--muted); cursor: pointer; }
+.selecting .night-check { display: inline-flex; }
+.night-check input { width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+#select-toggle[aria-pressed="true"] { background: var(--selected); font-weight: 600; }
+.selbar {
+  position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem;
+  padding: .7rem clamp(.75rem, 2.5vw, 2rem); background: var(--surface); border-top: 1px solid var(--line);
+  box-shadow: 0 -4px 14px rgba(0, 0, 0, .12);
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
 dialog { border: 1px solid var(--line); border-radius: 10px; padding: 0; background: var(--surface); color: var(--text); width: min(1200px, 96vw); }
 dialog::backdrop { background: rgba(0, 0, 0, .6); }
 dialog img, dialog video { display: block; width: 100%; height: auto; max-height: 75vh; object-fit: contain; background: var(--screen); }

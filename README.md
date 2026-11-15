@@ -27,7 +27,10 @@ Raspberry Pi + camera          Debian server                                   B
   detection selector on each tile: *Arrêtée* (off), *Observation*
   (detect only) or *Enregistrement* (recording).
 - **Passages**: photos and video clips grouped by night, with playback,
-  download and deletion.
+  download and deletion. The *Sélectionner* (select) button lets you tick
+  several passages (a whole night, or a range with Shift + click) to
+  download them as one ZIP archive or delete them at once, up to 500 at a
+  time.
 - **Settings** (*Réglages*, per camera): detection zones drawn freehand on
   the live image, exclusion zones, thresholds, live display of detected
   motion, log of recent detections (kept or discarded, and why), video clip
@@ -36,8 +39,8 @@ Raspberry Pi + camera          Debian server                                   B
 ## Installing or upgrading (Debian 12 or 13)
 
 ```bash
-curl -L -o mouse-watch-4.0.0.tar.gz https://github.com/<your-account>/mouse-watch/archive/refs/tags/v4.0.0.tar.gz
-tar xzf mouse-watch-4.0.0.tar.gz && cd mouse-watch-4.0.0
+curl -L -o mouse-watch-4.1.0.tar.gz https://github.com/<your-account>/mouse-watch/archive/refs/tags/v4.1.0.tar.gz
+tar xzf mouse-watch-4.1.0.tar.gz && cd mouse-watch-4.1.0
 sudo ./install.sh
 sudo nano /etc/rtsp-web/config.yaml
 sudo systemctl restart rtsp-web
@@ -48,7 +51,7 @@ Git on the server, after `gh auth login`:
 
 ```bash
 git clone https://github.com/<your-account>/mouse-watch.git
-cd mouse-watch && git checkout v4.0.0
+cd mouse-watch && git checkout v4.1.0
 ```
 
 Then open `http://<server-address>:8080/`.

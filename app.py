@@ -13,6 +13,10 @@ avec détection de mouvement et photo de chaque passage.
 """
 import argparse
 import logging
+import secrets
+import threading
+import time
+import zipfile
 import os
 import re
 import signal
@@ -31,10 +35,13 @@ from recording import Recorder  # noqa: E402
 from settings import SettingsError, SettingsStore  # noqa: E402
 from storage import NasTimeout, Storage  # noqa: E402
 
-__version__ = "4.0.1"
+__version__ = "4.1.0"
 
 log = logging.getLogger("rtsp-web")
 ID_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
+BATCH_MAX = 500              # passages au plus par action groupée
+DOWNLOAD_TTL = 30 * 60       # durée de vie d'une archive préparée (s)
+TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 EVENT_RE = re.compile(r"^[a-z0-9_-]{1,32}_\d{8}-\d{6}_\d{3}(-\d+)?$")
 
 
@@ -229,6 +236,124 @@ def create_app(ctx: dict) -> Flask:
         except OSError as exc:
             return jsonify({"error": str(exc)}), 500
         return jsonify({"ok": True})
+
+    # ------------------------------------------------------ actions groupées
+    downloads_dir = os.path.join(os.path.dirname(storage.thumb_dir), "downloads")
+    os.makedirs(downloads_dir, exist_ok=True)
+    downloads = {}                   # jeton -> {"path", "name", "created"}
+    downloads_lock = threading.Lock()
+
+    def purge_downloads():
+        now = time.time()
+        with downloads_lock:
+            for token, d in list(downloads.items()):
+                if now - d["created"] > DOWNLOAD_TTL:
+                    downloads.pop(token)
+                    try:
+                        os.remove(d["path"])
+                    except OSError:
+                        pass
+        for name in os.listdir(downloads_dir):          # restes d'un arrêt du service
+            path = os.path.join(downloads_dir, name)
+            try:
+                if now - os.path.getmtime(path) > DOWNLOAD_TTL:
+                    os.remove(path)
+            except OSError:
+                pass
+
+    def batch_events():
+        body = request.get_json(force=True, silent=True) or {}
+        ids = body.get("ids")
+        if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
+            abort(400, "liste de passages attendue")
+        if len(ids) > BATCH_MAX:
+            abort(400, f"au plus {BATCH_MAX} passages à la fois")
+        events = []
+        for eid in dict.fromkeys(ids):                  # sans doublons, ordre conservé
+            if EVENT_RE.match(eid):
+                event = storage.get_event(eid)
+                if event:
+                    events.append(event)
+        return events, body
+
+    @app.post("/api/events/delete")
+    def api_batch_delete():
+        events, _ = batch_events()
+        deleted, failed = [], []
+        for i, event in enumerate(events):
+            try:
+                storage.delete_event(event)
+                deleted.append(event["id"])
+            except NasTimeout:
+                # NAS muet : inutile d'attendre pour chacun des suivants
+                failed += [{"id": e["id"], "error": "Le NAS ne répond pas."} for e in events[i:]]
+                break
+            except OSError as exc:
+                failed.append({"id": event["id"], "error": str(exc)})
+        if deleted:
+            log.info("suppression groupée : %d passage(s)", len(deleted))
+        return jsonify({"deleted": deleted, "failed": failed})
+
+    @app.post("/api/events/archive")
+    def api_batch_archive():
+        """Prépare une archive ZIP des passages choisis ; renvoie l'adresse de téléchargement."""
+        events, body = batch_events()
+        if not events:
+            abort(404)
+        with_videos = bool(body.get("videos", True))
+        purge_downloads()
+        token = secrets.token_urlsafe(18)
+        path = os.path.join(downloads_dir, token + ".zip")
+        added, missing = 0, []
+        nas_down = False
+        # Photos et vidéos sont déjà compressées : archive sans recompression
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_STORED) as zf:
+            for event in sorted(events, key=lambda e: e["start"]):
+                base = event["file"][:-4]               # terrier/2026-11-12/02-14-37
+                parts = [(event["file"], storage.read_photo), (base + ".json", None)]
+                if with_videos and event["clip_state"] == "ok":
+                    parts.append((event["clip"], storage.read_clip))
+                for rel, reader in parts:
+                    if nas_down and event["location"] != "pending":
+                        missing.append(rel)
+                        continue
+                    try:
+                        data = reader(event) if reader else storage._read(event, rel)
+                    except NasTimeout:
+                        nas_down = True
+                        missing.append(rel)
+                        continue
+                    except OSError:
+                        missing.append(rel)
+                        continue
+                    zf.writestr(rel, data)
+                    added += 1
+            if missing:
+                zf.writestr("FICHIERS-MANQUANTS.txt",
+                            "Fichiers introuvables ou NAS injoignable lors de la préparation :\n"
+                            + "\n".join(missing) + "\n")
+        if not added:
+            os.remove(path)
+            return jsonify({"error": "Aucun fichier n'a pu être lu"
+                                     + (" : le NAS ne répond pas." if nas_down else ".")}), 504
+        stamp = time.strftime("%Y-%m-%d_%H-%M")
+        name = f"passages_{len(events)}_{stamp}.zip"
+        with downloads_lock:
+            downloads[token] = {"path": path, "name": name, "created": time.time()}
+        return jsonify({"url": f"/api/downloads/{token}", "name": name,
+                        "files": added, "missing": len(missing),
+                        "size": os.path.getsize(path)})
+
+    @app.get("/api/downloads/<token>")
+    def api_download(token):
+        if not TOKEN_RE.match(token):
+            abort(404)
+        with downloads_lock:
+            d = downloads.get(token)
+        if d is None or not os.path.exists(d["path"]):
+            abort(404, "Archive expirée : relancez le téléchargement.")
+        return send_file(d["path"], mimetype="application/zip", as_attachment=True,
+                         download_name=d["name"], max_age=0)
 
     @app.get("/healthz")
     def healthz():

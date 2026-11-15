@@ -12,11 +12,30 @@
         {% for c in cameras %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
       </select>
     </label>
+    <button type="button" class="btn" id="select-toggle" aria-pressed="false">Sélectionner</button>
   </div>
   <div id="nights" class="stack"></div>
   <p class="empty" id="empty" hidden>Aucun passage enregistré pour le moment. Les photos apparaissent ici quand une caméra est en position « Enregistrement ».</p>
   <div><button type="button" class="btn" id="more" hidden>Afficher les passages plus anciens</button></div>
 </main>
+
+<div class="selbar" id="selbar" role="region" aria-label="Actions sur la sélection" hidden>
+  <strong id="sel-count" aria-live="polite">0 passage sélectionné</strong>
+  <button type="button" class="btn" id="sel-all" title="Sélectionne tous les passages affichés ; « Afficher les passages plus anciens » en ajoute d’autres">Tout sélectionner</button>
+  <button type="button" class="btn" id="sel-none">Tout désélectionner</button>
+  <span class="spacer"></span>
+  <label class="row" style="gap:.4rem;align-items:center">
+    <span class="muted small">Contenu</span>
+    <select id="sel-content" class="btn">
+      <option value="all">Photos et vidéos</option>
+      <option value="photos">Photos seules</option>
+    </select>
+  </label>
+  <button type="button" class="btn" id="sel-download">Télécharger</button>
+  <button type="button" class="btn danger" id="sel-delete">Supprimer</button>
+  <button type="button" class="btn" id="sel-done">Terminer</button>
+  <span class="small" id="sel-status" aria-live="polite" style="flex-basis:100%"></span>
+</div>
 
 <dialog id="viewer" aria-labelledby="viewer-title">
   <video id="viewer-video" controls playsinline muted hidden></video>

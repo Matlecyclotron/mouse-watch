@@ -1,5 +1,18 @@
 # Historique des versions
 
+## 4.1.0 — 2026-11-15
+
+- Actions groupées dans la page Passages : bouton « Sélectionner », cases à
+  cocher sur les vignettes, sélection d'une nuit entière ou d'une plage
+  (Maj + clic), barre d'actions avec le nombre de passages choisis.
+- Téléchargement de la sélection en une archive ZIP (photos et vidéos, ou
+  photos seules), avec les fiches JSON et l'arborescence caméra/date du NAS ;
+  les fichiers illisibles sont listés dans l'archive.
+- Suppression groupée avec confirmation ; en cas d'échec (NAS injoignable),
+  les passages non supprimés restent sélectionnés.
+- Au plus 500 passages par action ; archives préparées conservées 30 minutes
+  dans `/var/lib/rtsp-web/downloads`.
+
 ## 4.0.1 — 2026-11-11
 
 - Correction : après un changement brusque de luminosité, la détection
